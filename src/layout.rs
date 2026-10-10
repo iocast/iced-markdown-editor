@@ -4,7 +4,7 @@
 //! Everything is computed in document coordinates at the current zoom. The
 //! view translates them by the scroll offset.
 
-use crate::doc::{Block, Container, Document, Leaf, Pos, Style, OBJ, SOFT};
+use crate::doc::{Block, Container, Document, Leaf, OBJ, Pos, SOFT, Style};
 use crate::fonts::{Face, Fonts};
 use crate::images::LoadedImage;
 use crate::page::Paper;
@@ -431,8 +431,13 @@ pub fn compute(
 
         let raw = block.leaf.is_raw();
         let pad = if raw { CODE_PAD * z } else { 0.0 };
-        let (image_sizes, image_runs) =
-            block_images(block, images, z, width, flow.usable_height() - m.line_height);
+        let (image_sizes, image_runs) = block_images(
+            block,
+            images,
+            z,
+            width,
+            flow.usable_height() - m.line_height,
+        );
         let rows = if block.leaf == Leaf::Rule {
             vec![(0, 0, vec![0.0])]
         } else {
@@ -506,7 +511,11 @@ pub fn compute(
 
             let marker_y = y + row_height
                 - m.line_height
-                - if image_height > 0.0 { IMAGE_GAP * z } else { 0.0 };
+                - if image_height > 0.0 {
+                    IMAGE_GAP * z
+                } else {
+                    0.0
+                };
             if first {
                 let mut level = 0;
                 for (depth, container) in block.containers.iter().enumerate() {
@@ -724,10 +733,7 @@ impl Layout {
     /// Caret geometry `(x, y, height)`.
     pub fn caret(&self, pos: Pos) -> Option<(f32, f32, f32)> {
         let line = &self.lines[self.line_for(pos)?];
-        let k = pos
-            .offset
-            .saturating_sub(line.start)
-            .min(line.xs.len() - 1);
+        let k = pos.offset.saturating_sub(line.start).min(line.xs.len() - 1);
         Some((line.xs[k], line.y, line.height))
     }
 

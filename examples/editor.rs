@@ -8,13 +8,13 @@
 //! cargo run --example editor --features syntect,images
 
 use iced::event::{self, Status};
-use iced::keyboard::{self, key::Named, Key};
+use iced::keyboard::{self, Key, key::Named};
 use iced::widget::{button, column, container, pick_list, row, text};
-use iced::{window, Alignment, Element, Length, Subscription, Task, Theme};
+use iced::{Alignment, Element, Length, Subscription, Task, Theme, window};
 use iced_markdown_editor::{
-    markdown_editor, Action, CodeHighlighter, Command, EditorState, EditorStyle, Event, ImageId,
-    ImageSettings, KeyBinding, Margins, Measure, Orientation, Output, PageSize, Paper,
-    PastedImage, SyntectHighlighter, ZoomSettings, ZoomShortcuts, FONTS,
+    Action, CodeHighlighter, Command, EditorState, EditorStyle, Event, FONTS, ImageId,
+    ImageSettings, KeyBinding, Margins, Measure, Orientation, Output, PageSize, Paper, PastedImage,
+    SyntectHighlighter, ZoomSettings, ZoomShortcuts, markdown_editor,
 };
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -90,7 +90,11 @@ fn toggle<'a>(label: &str, on: bool, message: Message) -> Element<'a, Message> {
     };
     button(text(label).size(13))
         .padding([4, 10])
-        .style(if on { button::primary } else { button::secondary })
+        .style(if on {
+            button::primary
+        } else {
+            button::secondary
+        })
         .on_press(message)
         .into()
 }
@@ -397,7 +401,11 @@ impl Demo {
             .and_then(|path| path.file_name())
             .and_then(|name| name.to_str())
             .unwrap_or("Untitled.md");
-        let dirty = if self.editor.is_dirty() { "\u{25CF} " } else { "" };
+        let dirty = if self.editor.is_dirty() {
+            "\u{25CF} "
+        } else {
+            ""
+        };
         format!(
             "{dirty}{name} - iced-markdown-editor {}",
             env!("CARGO_PKG_VERSION")
@@ -480,7 +488,7 @@ impl Demo {
                             .map(|file| file.path().to_path_buf())
                     },
                     Message::ImagePicked,
-                )
+                );
             }
             Message::ImagePicked(Some(path)) => {
                 let output = self.editor.execute(Command::InsertImageFile(path));
@@ -505,7 +513,11 @@ impl Demo {
                 self.editor.set_markdown("");
                 self.editor.set_image_base(None);
                 self.path = None;
-                return self.editor.execute(Command::Focus).task.map(Message::Editor);
+                return self
+                    .editor
+                    .execute(Command::Focus)
+                    .task
+                    .map(Message::Editor);
             }
             Message::Open => {
                 return Task::perform(
@@ -517,7 +529,7 @@ impl Demo {
                             .map(|file| file.path().to_path_buf())
                     },
                     Message::Opened,
-                )
+                );
             }
             Message::Opened(Some(path)) => {
                 return Task::perform(
@@ -527,7 +539,7 @@ impl Demo {
                             .map_err(|error| error.to_string())
                     },
                     Message::Loaded,
-                )
+                );
             }
             Message::Opened(None) => {}
             Message::Loaded(Ok((path, markdown))) => {
@@ -589,8 +601,7 @@ impl Demo {
                 } else {
                     window::Mode::Windowed
                 };
-                return window::latest()
-                    .and_then(move |id| window::set_mode(id, mode));
+                return window::latest().and_then(move |id| window::set_mode(id, mode));
             }
             Message::ZoomEnabled(enabled) => {
                 self.zoom_enabled = enabled;
@@ -641,10 +652,14 @@ impl Demo {
             action("Save", Some(Message::Save)),
             action("Save as", Some(Message::SaveAs)),
             separator(),
-            pick_list(ThemeChoice::options(), Some(self.theme.clone()), Message::Theme)
-                .text_size(13)
-                .padding([4, 8])
-                .width(Length::Fixed(200.0)),
+            pick_list(
+                ThemeChoice::options(),
+                Some(self.theme.clone()),
+                Message::Theme
+            )
+            .text_size(13)
+            .padding([4, 8])
+            .width(Length::Fixed(200.0)),
             pick_list(&TAB_WIDTHS[..], Some(self.tab_width), Message::TabWidth)
                 .text_size(13)
                 .padding([4, 8]),

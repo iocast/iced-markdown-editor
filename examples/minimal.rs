@@ -6,7 +6,7 @@
 use iced::widget::{column, container, row, scrollable, text};
 use iced::{Element, Length, Subscription, Task};
 use iced_markdown_editor::{
-    markdown_editor, Action, EditorState, Event, Paper, ZoomSettings, FONTS,
+    Action, EditorState, Event, FONTS, Paper, ZoomSettings, markdown_editor,
 };
 
 pub fn main() -> iced::Result {

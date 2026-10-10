@@ -12,8 +12,8 @@
 //! * [`SOFT`] soft line break (displayed as a space)
 //! * [`OBJ`]  placeholder for an empty link text or an empty image alt
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Soft line break (a line ending inside a paragraph).
 pub const SOFT: char = '\u{2028}';
@@ -144,8 +144,12 @@ impl Container {
         match (self, other) {
             (Container::Quote { id: a }, Container::Quote { id: b }) => a == b,
             (
-                Container::Item { list: la, id: a, .. },
-                Container::Item { list: lb, id: b, .. },
+                Container::Item {
+                    list: la, id: a, ..
+                },
+                Container::Item {
+                    list: lb, id: b, ..
+                },
             ) => la.id == lb.id && a == b,
             _ => false,
         }
@@ -219,7 +223,10 @@ pub enum BlockKind {
 
 impl BlockKind {
     pub fn is_list(self) -> bool {
-        matches!(self, BlockKind::Bullet | BlockKind::Ordered | BlockKind::Task)
+        matches!(
+            self,
+            BlockKind::Bullet | BlockKind::Ordered | BlockKind::Task
+        )
     }
 }
 
@@ -547,9 +554,10 @@ impl Document {
         block
             .chars
             .splice(offset..offset, std::iter::repeat(' ').take(count));
-        block
-            .styles
-            .splice(offset..offset, std::iter::repeat(Style::default()).take(count));
+        block.styles.splice(
+            offset..offset,
+            std::iter::repeat(Style::default()).take(count),
+        );
     }
 
     /// Splits the block at `at` (the Enter key). In a list the new block
@@ -651,7 +659,10 @@ impl Document {
             if block.leaf.is_plain() {
                 continue;
             }
-            for (c, style) in block.chars[start..end].iter().zip(&block.styles[start..end]) {
+            for (c, style) in block.chars[start..end]
+                .iter()
+                .zip(&block.styles[start..end])
+            {
                 if is_break(*c) {
                     continue;
                 }

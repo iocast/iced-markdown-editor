@@ -6,7 +6,7 @@
 use iced::widget::{button, column, container, row, text, text_input};
 use iced::{Alignment, Element, Length, Subscription, Task};
 use iced_markdown_editor::{
-    markdown_editor, Action, Command, EditorState, ImageSettings, Paper, FONTS,
+    Action, Command, EditorState, FONTS, ImageSettings, Paper, markdown_editor,
 };
 use std::path::{Path, PathBuf};
 

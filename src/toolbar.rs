@@ -44,7 +44,11 @@ pub(crate) fn button_style(
             background,
             text_color,
             border: Border {
-                color: if on { palette.accent } else { Color::TRANSPARENT },
+                color: if on {
+                    palette.accent
+                } else {
+                    Color::TRANSPARENT
+                },
                 width: if on { 1.0 } else { 0.0 },
                 radius: 4.0.into(),
             },
@@ -119,16 +123,70 @@ pub(crate) fn view(
         tool(p, "\u{21B6}", ui, false, can_undo.then_some(Command::Undo)),
         tool(p, "\u{21B7}", ui, false, can_redo.then_some(Command::Redo)),
         separator(p),
-        tool(p, "Normal", ui, visual && block == BlockKind::Paragraph, set(BlockKind::Paragraph)),
-        tool(p, "H1", fonts::SANS_BOLD, visual && block == BlockKind::Heading(1), set(BlockKind::Heading(1))),
-        tool(p, "H2", fonts::SANS_BOLD, visual && block == BlockKind::Heading(2), set(BlockKind::Heading(2))),
-        tool(p, "H3", fonts::SANS_BOLD, visual && block == BlockKind::Heading(3), set(BlockKind::Heading(3))),
+        tool(
+            p,
+            "Normal",
+            ui,
+            visual && block == BlockKind::Paragraph,
+            set(BlockKind::Paragraph)
+        ),
+        tool(
+            p,
+            "H1",
+            fonts::SANS_BOLD,
+            visual && block == BlockKind::Heading(1),
+            set(BlockKind::Heading(1))
+        ),
+        tool(
+            p,
+            "H2",
+            fonts::SANS_BOLD,
+            visual && block == BlockKind::Heading(2),
+            set(BlockKind::Heading(2))
+        ),
+        tool(
+            p,
+            "H3",
+            fonts::SANS_BOLD,
+            visual && block == BlockKind::Heading(3),
+            set(BlockKind::Heading(3))
+        ),
         separator(p),
-        tool(p, "B", fonts::SANS_BOLD, visual && format.bold, Some(Command::ToggleBold)),
-        tool(p, "I", fonts::SANS_ITALIC, visual && format.italic, Some(Command::ToggleItalic)),
-        tool(p, "S", ui, visual && format.strike, Some(Command::ToggleStrike)),
-        tool(p, "</>", fonts::MONO, visual && format.code, Some(Command::ToggleCode)),
-        tool(p, "Link", ui, visual && format.link.is_some(), Some(Command::EditLink)),
+        tool(
+            p,
+            "B",
+            fonts::SANS_BOLD,
+            visual && format.bold,
+            Some(Command::ToggleBold)
+        ),
+        tool(
+            p,
+            "I",
+            fonts::SANS_ITALIC,
+            visual && format.italic,
+            Some(Command::ToggleItalic)
+        ),
+        tool(
+            p,
+            "S",
+            ui,
+            visual && format.strike,
+            Some(Command::ToggleStrike)
+        ),
+        tool(
+            p,
+            "</>",
+            fonts::MONO,
+            visual && format.code,
+            Some(Command::ToggleCode)
+        ),
+        tool(
+            p,
+            "Link",
+            ui,
+            visual && format.link.is_some(),
+            Some(Command::EditLink)
+        ),
     ]
     .spacing(2)
     .align_y(Alignment::Center);
@@ -139,11 +197,41 @@ pub(crate) fn view(
 
     bar = bar
         .push(separator(p))
-        .push(tool(p, "\u{2022} \u{2014}", ui, visual && !task && format.list == Some(false), set(BlockKind::Bullet)))
-        .push(tool(p, "1. \u{2014}", ui, visual && !task && format.list == Some(true), set(BlockKind::Ordered)))
-        .push(tool(p, "\u{2611} \u{2014}", ui, visual && task, set(BlockKind::Task)))
-        .push(tool(p, "\u{201C} \u{201D}", ui, visual && format.quote, set(BlockKind::Quote)))
-        .push(tool(p, "{ }", ui, visual && block == BlockKind::Code, set(BlockKind::Code)));
+        .push(tool(
+            p,
+            "\u{2022} \u{2014}",
+            ui,
+            visual && !task && format.list == Some(false),
+            set(BlockKind::Bullet),
+        ))
+        .push(tool(
+            p,
+            "1. \u{2014}",
+            ui,
+            visual && !task && format.list == Some(true),
+            set(BlockKind::Ordered),
+        ))
+        .push(tool(
+            p,
+            "\u{2611} \u{2014}",
+            ui,
+            visual && task,
+            set(BlockKind::Task),
+        ))
+        .push(tool(
+            p,
+            "\u{201C} \u{201D}",
+            ui,
+            visual && format.quote,
+            set(BlockKind::Quote),
+        ))
+        .push(tool(
+            p,
+            "{ }",
+            ui,
+            visual && block == BlockKind::Code,
+            set(BlockKind::Code),
+        ));
 
     if visual && block == BlockKind::Code {
         bar = bar.push(language_list(format, languages));
@@ -152,8 +240,20 @@ pub(crate) fn view(
     bar = bar
         .push(tool(p, "\u{2015}", ui, false, Some(Command::InsertRule)))
         .push(separator(p))
-        .push(tool(p, "WYSIWYG", ui, visual, Some(Command::SetMode(Mode::Wysiwyg))))
-        .push(tool(p, "Source", ui, !visual, Some(Command::SetMode(Mode::Source))));
+        .push(tool(
+            p,
+            "WYSIWYG",
+            ui,
+            visual,
+            Some(Command::SetMode(Mode::Wysiwyg)),
+        ))
+        .push(tool(
+            p,
+            "Source",
+            ui,
+            !visual,
+            Some(Command::SetMode(Mode::Source)),
+        ));
 
     // Narrow editors: buttons continue on the next line instead of being cut off.
     bar.wrap().into()

@@ -7,8 +7,8 @@
 use iced::widget::{button, column, container, row, text};
 use iced::{Alignment, Element, Length, Subscription, Task};
 use iced_markdown_editor::{
-    markdown_editor, Action, Command, EditorState, Event, ImageId, ImageSettings, Output,
-    PastedImage, FONTS,
+    Action, Command, EditorState, Event, FONTS, ImageId, ImageSettings, Output, PastedImage,
+    markdown_editor,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;

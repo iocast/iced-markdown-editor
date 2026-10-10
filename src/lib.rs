@@ -70,8 +70,8 @@ pub use markdown::normalize;
 pub use page::{IsoSeries, Margins, Measure, Orientation, PageSize, Paper, ParseError, Unit};
 pub use style::{EditorStyle, Palette, Typography};
 pub use widget::{
-    markdown_editor, Action, Command, EditorState, Event, Formatting, MarkdownEditor, Mode,
-    Output, DEFAULT_TAB_WIDTH,
+    Action, Command, DEFAULT_TAB_WIDTH, EditorState, Event, Formatting, MarkdownEditor, Mode,
+    Output, markdown_editor,
 };
 pub use zoom::{KeyBinding, ZoomSettings, ZoomShortcuts};
 

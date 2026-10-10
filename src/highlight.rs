@@ -72,8 +72,27 @@ pub trait CodeHighlighter: Send + Sync + 'static {
 
 /// Language list used when no highlighter is set or it lists none.
 pub const COMMON_LANGUAGES: &[&str] = &[
-    "bash", "c", "cpp", "csharp", "css", "go", "html", "java", "javascript", "json", "kotlin",
-    "markdown", "python", "ruby", "rust", "sql", "swift", "toml", "typescript", "xml", "yaml",
+    "bash",
+    "c",
+    "cpp",
+    "csharp",
+    "css",
+    "go",
+    "html",
+    "java",
+    "javascript",
+    "json",
+    "kotlin",
+    "markdown",
+    "python",
+    "ruby",
+    "rust",
+    "sql",
+    "swift",
+    "toml",
+    "typescript",
+    "xml",
+    "yaml",
 ];
 
 /// Relative luminance used to decide whether a background is dark.

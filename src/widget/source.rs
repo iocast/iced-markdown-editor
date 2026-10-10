@@ -652,8 +652,9 @@ impl EditorState {
             }
             BlockKind::Paragraph => self.source_prefix(|p| p.heading = None),
             BlockKind::Bullet => {
-                let all = self
-                    .source_all(|p| matches!(p.marker, Some(Marker::Bullet(_))) && p.task.is_none());
+                let all = self.source_all(|p| {
+                    matches!(p.marker, Some(Marker::Bullet(_))) && p.task.is_none()
+                });
                 self.source_prefix(|p| {
                     p.marker = if all {
                         None
@@ -815,10 +816,22 @@ mod tests {
 
     #[test]
     fn enter_continues_lists_and_quotes() {
-        assert_eq!(plan_enter(&["- [x] a"], 0, 7), EnterPlan::Continue("- [ ] ".into()));
-        assert_eq!(plan_enter(&["9. a"], 0, 4), EnterPlan::Continue("10. ".into()));
-        assert_eq!(plan_enter(&["  * b"], 0, 5), EnterPlan::Continue("  * ".into()));
-        assert_eq!(plan_enter(&["> - a"], 0, 5), EnterPlan::Continue("> - ".into()));
+        assert_eq!(
+            plan_enter(&["- [x] a"], 0, 7),
+            EnterPlan::Continue("- [ ] ".into())
+        );
+        assert_eq!(
+            plan_enter(&["9. a"], 0, 4),
+            EnterPlan::Continue("10. ".into())
+        );
+        assert_eq!(
+            plan_enter(&["  * b"], 0, 5),
+            EnterPlan::Continue("  * ".into())
+        );
+        assert_eq!(
+            plan_enter(&["> - a"], 0, 5),
+            EnterPlan::Continue("> - ".into())
+        );
         assert_eq!(plan_enter(&["> a"], 0, 3), EnterPlan::Continue("> ".into()));
         assert_eq!(plan_enter(&["text"], 0, 4), EnterPlan::Plain);
         assert_eq!(plan_enter(&["# Title"], 0, 7), EnterPlan::Plain);
@@ -852,15 +865,27 @@ mod tests {
 
     #[test]
     fn tab_nests_and_shift_tab_unnests() {
-        assert_eq!(plan_tab(&["- a", "- b"], 1, false), TabPlan::Replace("  - ".into()));
-        assert_eq!(plan_tab(&["1. a", "2. b"], 1, false), TabPlan::Replace("   1. ".into()));
+        assert_eq!(
+            plan_tab(&["- a", "- b"], 1, false),
+            TabPlan::Replace("  - ".into())
+        );
+        assert_eq!(
+            plan_tab(&["1. a", "2. b"], 1, false),
+            TabPlan::Replace("   1. ".into())
+        );
         assert_eq!(
             plan_tab(&["- [ ] a", "- [x] b"], 1, false),
             TabPlan::Replace("  - [x] ".into())
         );
         assert_eq!(plan_tab(&["- a"], 0, false), TabPlan::Nothing);
-        assert_eq!(plan_tab(&["- a", "  - b"], 1, true), TabPlan::Replace("- ".into()));
-        assert_eq!(plan_tab(&["1. a", "   1. b"], 1, true), TabPlan::Replace("2. ".into()));
+        assert_eq!(
+            plan_tab(&["- a", "  - b"], 1, true),
+            TabPlan::Replace("- ".into())
+        );
+        assert_eq!(
+            plan_tab(&["1. a", "   1. b"], 1, true),
+            TabPlan::Replace("2. ".into())
+        );
         assert_eq!(plan_tab(&["- a"], 0, true), TabPlan::Replace(String::new()));
         assert_eq!(plan_tab(&["text"], 0, false), TabPlan::NotList);
     }
@@ -871,9 +896,15 @@ mod tests {
         let text = format!("x {url} y {url}");
         let mut embedded = Embedded::default();
         let short = embedded.shorten(&text);
-        assert_eq!(short, "x data:image/png;embedded,1 y data:image/png;embedded,1");
+        assert_eq!(
+            short,
+            "x data:image/png;embedded,1 y data:image/png;embedded,1"
+        );
         assert_eq!(embedded.expand(&short), text);
         // Short URLs are left alone.
-        assert_eq!(embedded.shorten("data:image/png;base64,AA"), "data:image/png;base64,AA");
+        assert_eq!(
+            embedded.shorten("data:image/png;base64,AA"),
+            "data:image/png;base64,AA"
+        );
     }
 }

@@ -7,10 +7,10 @@ use super::{Action, Command, EditorState, Inner, Mode};
 use crate::fonts;
 use crate::toolbar::fill;
 use crate::{render, toolbar};
-use iced::keyboard::{self, key::Named, Key, Modifiers};
+use iced::keyboard::{self, Key, Modifiers, key::Named};
 use iced::mouse::{self, ScrollDelta};
 use iced::widget::canvas::{self, Canvas, Frame, Geometry};
-use iced::widget::{button, column, container, row, text, text_input, Text};
+use iced::widget::{Text, button, column, container, row, text, text_input};
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme,
     Vector,

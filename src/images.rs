@@ -13,7 +13,7 @@
 //! On the web (`wasm32`) there is no file system and no desktop clipboard:
 //! images are shown from `data:` URLs and the loader.
 
-use crate::doc::{Block, Document, Link, Style, OBJ};
+use crate::doc::{Block, Document, Link, OBJ, Style};
 use crate::markdown;
 use std::collections::HashMap;
 use std::fmt;
@@ -189,7 +189,10 @@ pub enum ImageRejection {
     Disabled,
     /// Not an accepted image type (the detected MIME type, or `unknown`).
     UnsupportedType(String),
-    TooLarge { size: usize, max: usize },
+    TooLarge {
+        size: usize,
+        max: usize,
+    },
     /// The file could not be read.
     Unreadable(String),
 }
@@ -200,7 +203,12 @@ impl fmt::Display for ImageRejection {
             ImageRejection::Disabled => f.write_str("images are disabled"),
             ImageRejection::UnsupportedType(mime) => write!(f, "unsupported image type {mime}"),
             ImageRejection::TooLarge { size, max } => {
-                write!(f, "image too large ({} KiB, maximum {} KiB)", size / 1024, max / 1024)
+                write!(
+                    f,
+                    "image too large ({} KiB, maximum {} KiB)",
+                    size / 1024,
+                    max / 1024
+                )
             }
             ImageRejection::Unreadable(error) => write!(f, "cannot read the image: {error}"),
         }

@@ -12,7 +12,7 @@
 use iced::widget::{column, container, row, scrollable, text};
 use iced::{Element, Length, Subscription, Task};
 use iced_markdown_editor::{
-    markdown_editor, Action, Command, EditorState, Event, ImageSettings, Output, Paper, FONTS,
+    Action, Command, EditorState, Event, FONTS, ImageSettings, Output, Paper, markdown_editor,
 };
 use std::path::PathBuf;
 
@@ -47,11 +47,11 @@ impl App {
             "# Embedded images\n\nPaste, drop or insert an image (up to 512 KiB). It is \
              stored inside the Markdown as a `data:` URL.\n",
         )
-        .images(
-            ImageSettings::embed()
-                .max_bytes(512 * 1024)
-                .accept(["image/png", "image/jpeg", "image/gif"]),
-        )
+        .images(ImageSettings::embed().max_bytes(512 * 1024).accept([
+            "image/png",
+            "image/jpeg",
+            "image/gif",
+        ]))
         .paper(Paper::fill());
         let mut app = Self {
             editor,
@@ -137,7 +137,11 @@ impl App {
         .width(Length::Fixed(420.0))
         .height(Length::Fill);
 
-        row![markdown_editor(&self.editor).view().map(Message::Editor), side].into()
+        row![
+            markdown_editor(&self.editor).view().map(Message::Editor),
+            side
+        ]
+        .into()
     }
 
     fn subscription(&self) -> Subscription<Message> {

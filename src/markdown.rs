@@ -13,7 +13,7 @@
 //! directly after a letter), so such paragraphs fall back to
 //! `<strong>`, `<em>` and `<del>` tags, which the importer recognises.
 
-use crate::doc::{Block, Container, Document, Flag, Leaf, Link, ListInfo, Style, OBJ, SOFT};
+use crate::doc::{Block, Container, Document, Flag, Leaf, Link, ListInfo, OBJ, SOFT, Style};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, LinkType, Options, Parser, Tag};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -160,10 +160,16 @@ impl Builder {
         }
         let style = self.style(code);
         if self.image.is_some() {
-            let text: String = text.chars().map(|c| if is_break(c) { ' ' } else { c }).collect();
+            let text: String = text
+                .chars()
+                .map(|c| if is_break(c) { ' ' } else { c })
+                .collect();
             self.push_styled(&text, style);
         } else {
-            let text: String = text.chars().map(|c| if c == '\n' { SOFT } else { c }).collect();
+            let text: String = text
+                .chars()
+                .map(|c| if c == '\n' { SOFT } else { c })
+                .collect();
             self.push_styled(&text, style);
         }
     }
@@ -212,7 +218,10 @@ impl Builder {
                 }
             }
             _ => {
-                let raw: String = tag.chars().map(|c| if c == '\n' { SOFT } else { c }).collect();
+                let raw: String = tag
+                    .chars()
+                    .map(|c| if c == '\n' { SOFT } else { c })
+                    .collect();
                 let style = Style {
                     html: true,
                     link: self.links.last().map(|(link, _)| link.clone()),
@@ -368,7 +377,8 @@ impl Builder {
                 };
                 let start = self.len();
                 self.ensure();
-                self.links.push((Link::new(url, Some(title.to_string())), start));
+                self.links
+                    .push((Link::new(url, Some(title.to_string())), start));
                 self.stack.push(Ctx::Link);
             }
             Tag::Image {
@@ -376,7 +386,10 @@ impl Builder {
             } => {
                 let start = self.len();
                 self.ensure();
-                self.image = Some((Link::new(dest_url.to_string(), Some(title.to_string())), start));
+                self.image = Some((
+                    Link::new(dest_url.to_string(), Some(title.to_string())),
+                    start,
+                ));
                 self.stack.push(Ctx::Image);
             }
             _ => self.stack.push(Ctx::Other),
@@ -422,7 +435,13 @@ impl Builder {
                     if self.len() == start {
                         // Empty link text keeps a placeholder.
                         let style = self.style(false);
-                        self.push_styled(&OBJ.to_string(), Style { link: Some(link), ..style });
+                        self.push_styled(
+                            &OBJ.to_string(),
+                            Style {
+                                link: Some(link),
+                                ..style
+                            },
+                        );
                     }
                 }
                 self.links.pop();
@@ -657,7 +676,10 @@ impl<'a> Inline<'a> {
     }
 
     fn wanted(&self, k: usize) -> Vec<Flag> {
-        MARKS.into_iter().filter(|flag| self.has(k, *flag)).collect()
+        MARKS
+            .into_iter()
+            .filter(|flag| self.has(k, *flag))
+            .collect()
     }
 
     fn mark_end(&self, flag: Flag, mut k: usize) -> usize {
@@ -971,9 +993,10 @@ fn expressible(blocks: &[Block]) -> Vec<Block> {
             let Some(inner) = block.containers.last() else {
                 continue;
             };
-            let shared = blocks.iter().enumerate().any(|(other, b)| {
-                other != index && b.containers.iter().any(|c| c.same(inner))
-            });
+            let shared = blocks
+                .iter()
+                .enumerate()
+                .any(|(other, b)| other != index && b.containers.iter().any(|c| c.same(inner)));
             if shared {
                 continue;
             }
@@ -989,12 +1012,68 @@ fn expressible(blocks: &[Block]) -> Vec<Block> {
 }
 
 const HTML_BLOCK_TAGS: &[&str] = &[
-    "address", "article", "aside", "base", "basefont", "blockquote", "body", "caption", "center",
-    "col", "colgroup", "dd", "details", "dialog", "dir", "div", "dl", "dt", "fieldset",
-    "figcaption", "figure", "footer", "form", "frame", "frameset", "h1", "h2", "h3", "h4", "h5",
-    "h6", "head", "header", "hr", "html", "iframe", "legend", "li", "link", "main", "menu",
-    "menuitem", "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search", "section",
-    "summary", "table", "tbody", "td", "tfoot", "th", "thead", "title", "tr", "track", "ul",
+    "address",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "blockquote",
+    "body",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hr",
+    "html",
+    "iframe",
+    "legend",
+    "li",
+    "link",
+    "main",
+    "menu",
+    "menuitem",
+    "nav",
+    "noframes",
+    "ol",
+    "optgroup",
+    "option",
+    "p",
+    "param",
+    "search",
+    "section",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul",
 ];
 
 /// HTML block types 1-6 can interrupt a paragraph, type 7 cannot.
@@ -1062,9 +1141,9 @@ fn can_interrupt(a: &Block, b: &Block, common: usize) -> bool {
         let Container::Item { list, .. } = container else {
             return true;
         };
-        let first_of_list = !a.containers.get(common).is_some_and(|other| {
-            matches!(other, Container::Item { list: l, .. } if l.id == list.id)
-        });
+        let first_of_list = !a.containers.get(common).is_some_and(
+            |other| matches!(other, Container::Item { list: l, .. } if l.id == list.id),
+        );
         if first_of_list {
             if list.ordered && list.start != 1 {
                 return false;
@@ -1097,8 +1176,12 @@ fn needs_blank(a: &Block, b: &Block, common: usize) -> bool {
     for d in 0..a.containers.len().min(b.containers.len()) {
         match (a.containers[d], b.containers[d]) {
             (
-                Container::Item { list: la, id: ia, .. },
-                Container::Item { list: lb, id: ib, .. },
+                Container::Item {
+                    list: la, id: ia, ..
+                },
+                Container::Item {
+                    list: lb, id: ib, ..
+                },
             ) if la.id == lb.id => {
                 shared = Some(la);
                 if ia != ib {
@@ -1255,11 +1338,7 @@ pub fn serialize(doc: &Document) -> String {
                         .flatten()
                 });
                 let marker = if list.ordered {
-                    if other == Some('.') {
-                        ')'
-                    } else {
-                        '.'
-                    }
+                    if other == Some('.') { ')' } else { '.' }
                 } else if other == Some('-') {
                     '*'
                 } else {
@@ -1281,7 +1360,11 @@ pub fn serialize(doc: &Document) -> String {
 
         if let Some(prev) = previous {
             if needs_blank(prev, block, common) {
-                lines.push(cont_prefix(&containers[..common], &markers).trim_end().to_string());
+                lines.push(
+                    cont_prefix(&containers[..common], &markers)
+                        .trim_end()
+                        .to_string(),
+                );
             }
         }
 
@@ -1342,8 +1425,8 @@ mod tests {
     /// no "emphasis inside the same emphasis" (e.g. `*(*foo*)*`). The
     /// rendering looks the same; only the redundant nesting is lost.
     const NESTED_EMPHASIS: &[u32] = &[
-        368, 372, 388, 406, 407, 408, 416, 417, 418, 424, 425, 426, 431, 460, 462, 463, 464,
-        465, 467,
+        368, 372, 388, 406, 407, 408, 416, 417, 418, 424, 425, 426, 431, 460, 462, 463, 464, 465,
+        467,
     ];
 
     /// Different formats on the same text whose nesting order changes,
@@ -1429,7 +1512,10 @@ mod tests {
         assert_eq!(doc.blocks[0].text(), "open");
         assert_eq!(normalize("- [X] done\n"), "- [x] done\n");
 
-        assert_eq!(normalize("- \\[ \\] not a task\n"), "- \\[ \\] not a task\n");
+        assert_eq!(
+            normalize("- \\[ \\] not a task\n"),
+            "- \\[ \\] not a task\n"
+        );
         let doc = parse("- \\[ \\] not a task\n");
         assert_eq!(doc.blocks[0].containers[0].task(), None);
         assert_eq!(doc.blocks[0].text(), "[ ] not a task");
@@ -1541,7 +1627,10 @@ mod tests {
                     Leaf::Rule => {}
                     Leaf::Code => {
                         for _ in 0..rng.below(13) {
-                            block.push(*rng.pick(&['x', ' ', '\n', '`', '~', '\t']), Style::default());
+                            block.push(
+                                *rng.pick(&['x', ' ', '\n', '`', '~', '\t']),
+                                Style::default(),
+                            );
                         }
                         block.info = (*rng.pick(&[None, Some("rust"), Some("a b")])).map(Arc::from);
                     }
@@ -1588,7 +1677,12 @@ mod tests {
                 };
                 let container = out[index].containers[depth];
                 let first = (0..out.len())
-                    .find(|k| out[*k].containers.get(depth).is_some_and(|c| c.same(&container)))
+                    .find(|k| {
+                        out[*k]
+                            .containers
+                            .get(depth)
+                            .is_some_and(|c| c.same(&container))
+                    })
                     .unwrap();
                 let ok = out[first].leaf == Leaf::Paragraph
                     && out[first].containers.len() == depth + 1
@@ -1625,7 +1719,11 @@ mod tests {
                     .iter()
                     .map(|c| match c {
                         Container::Quote { id: q } => ('q', id('q', *q), 0, false, 0, None),
-                        Container::Item { list, id: item, task } => (
+                        Container::Item {
+                            list,
+                            id: item,
+                            task,
+                        } => (
                             'i',
                             id('l', list.id),
                             id('i', *item),
@@ -1639,7 +1737,13 @@ mod tests {
                     .chars
                     .iter()
                     .zip(&block.styles)
-                    .map(|(c, s)| if is_break(*c) { Style::default() } else { s.clone() })
+                    .map(|(c, s)| {
+                        if is_break(*c) {
+                            Style::default()
+                        } else {
+                            s.clone()
+                        }
+                    })
                     .collect();
                 (
                     containers,

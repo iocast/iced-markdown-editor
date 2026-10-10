@@ -13,16 +13,15 @@ mod edit;
 mod source;
 mod view;
 
-pub use view::{markdown_editor, MarkdownEditor};
+pub use view::{MarkdownEditor, markdown_editor};
 
 use crate::doc::{Block, BlockKind, Container, Document, Leaf, Pos, Selection, Style};
 use crate::fonts::Fonts;
-use crate::highlight::{self, CodeHighlighter, HighlightRequest, COMMON_LANGUAGES};
+use crate::highlight::{self, COMMON_LANGUAGES, CodeHighlighter, HighlightRequest};
 use crate::images::{
-    self, ImageCache, ImageId, ImageLoader, ImageRejection, ImageSettings, ImageSource,
-    PastedImage,
+    self, ImageCache, ImageId, ImageLoader, ImageRejection, ImageSettings, ImageSource, PastedImage,
 };
-use crate::layout::{compute as compute_layout, Layout};
+use crate::layout::{Layout, compute as compute_layout};
 use crate::markdown;
 use crate::page::Paper;
 use crate::style::EditorStyle;
@@ -32,8 +31,8 @@ use iced::mouse::ScrollDelta;
 use iced::widget::canvas;
 use iced::{Color, Size, Subscription, Task};
 use std::cell::{Cell, RefCell};
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -72,15 +71,28 @@ pub(crate) enum Inner {
     Key(Key, Modifiers, Option<String>),
     Modifiers(Modifiers),
     /// Press in document coordinates.
-    Press { x: f32, y: f32, clicks: u8 },
+    Press {
+        x: f32,
+        y: f32,
+        clicks: u8,
+    },
     /// Drag in document coordinates.
-    Drag { x: f32, y: f32 },
+    Drag {
+        x: f32,
+        y: f32,
+    },
     PressOutside,
     Blink,
     /// Scroll by a distance in pixels.
-    ScrollBy { dx: f32, dy: f32 },
+    ScrollBy {
+        dx: f32,
+        dy: f32,
+    },
     /// Scroll to an absolute offset (scrollbar drag).
-    ScrollTo { x: Option<f32>, y: Option<f32> },
+    ScrollTo {
+        x: Option<f32>,
+        y: Option<f32>,
+    },
     /// Ctrl/Cmd + wheel: zoom.
     Wheel(ScrollDelta),
     Command(Command),
@@ -132,7 +144,10 @@ pub enum Command {
     /// Like [`Command::InsertImage`] with the content of a file (desktop).
     InsertImageFile(PathBuf),
     /// Inserts `![alt](url)` for an image that already has a URL.
-    InsertImageLink { url: String, alt: String },
+    InsertImageLink {
+        url: String,
+        alt: String,
+    },
     /// Answer to [`Event::ImagePasted`]: the placeholder becomes `![alt](url)`.
     ResolveImage {
         id: ImageId,
@@ -140,7 +155,9 @@ pub enum Command {
         alt: String,
     },
     /// Answer to [`Event::ImagePasted`]: the placeholder is removed.
-    CancelImage { id: ImageId },
+    CancelImage {
+        id: ImageId,
+    },
     /// Emits [`Event::ImageRequested`] (the toolbar's image button).
     RequestImage,
     SetMode(Mode),
@@ -466,7 +483,10 @@ impl EditorState {
             .map(|highlighter| highlighter.languages())
             .unwrap_or_default();
         if languages.is_empty() {
-            COMMON_LANGUAGES.iter().map(|name| name.to_string()).collect()
+            COMMON_LANGUAGES
+                .iter()
+                .map(|name| name.to_string())
+                .collect()
         } else {
             languages
         }
@@ -479,7 +499,9 @@ impl EditorState {
         for block in &self.doc.blocks {
             for container in &block.containers {
                 if let Container::Item {
-                    id, task: Some(done), ..
+                    id,
+                    task: Some(done),
+                    ..
                 } = container
                 {
                     if !seen.contains(id) {
@@ -845,7 +867,10 @@ impl EditorState {
     /// Scroll offsets clamped to the content (used while drawing).
     pub(crate) fn clamped_scroll(&self) -> (f32, f32) {
         let (max_x, max_y) = self.max_scroll();
-        (self.scroll_x.clamp(0.0, max_x), self.scroll_y.clamp(0.0, max_y))
+        (
+            self.scroll_x.clamp(0.0, max_x),
+            self.scroll_y.clamp(0.0, max_y),
+        )
     }
 
     pub(crate) fn set_scroll(&mut self, x: f32, y: f32) {

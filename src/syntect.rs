@@ -129,7 +129,11 @@ impl CodeHighlighter for SyntectHighlighter {
         let Some(syntax) = self.find(request.language) else {
             return Vec::new();
         };
-        let theme = if request.dark { &self.dark } else { &self.light };
+        let theme = if request.dark {
+            &self.dark
+        } else {
+            &self.light
+        };
         let mut lines = HighlightLines::new(syntax, theme);
         let mut spans = Vec::new();
         let mut offset = 0usize;
@@ -187,7 +191,11 @@ mod tests {
         };
         assert!(!highlighter.highlight(&request("rust")).is_empty());
         assert!(!highlighter.highlight(&request("rs")).is_empty());
-        assert!(highlighter.highlight(&request("no-such-language")).is_empty());
+        assert!(
+            highlighter
+                .highlight(&request("no-such-language"))
+                .is_empty()
+        );
         assert!(highlighter.languages().contains(&"rust".to_string()));
     }
 }

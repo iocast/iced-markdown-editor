@@ -6,8 +6,8 @@
 //! which keeps the caret, selection and mouse hit-testing precise.
 
 use ab_glyph::{Font as _, FontRef};
-use iced::font::{Style as FontStyle, Weight};
 use iced::Font;
+use iced::font::{Style as FontStyle, Weight};
 
 pub const SANS_REGULAR_BYTES: &[u8] = include_bytes!("../assets/fonts/DejaVuSans.ttf");
 pub const SANS_BOLD_BYTES: &[u8] = include_bytes!("../assets/fonts/DejaVuSans-Bold.ttf");

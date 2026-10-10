@@ -285,7 +285,7 @@ impl FromStr for PageSize {
             "legal" => return Ok(PageSize::Legal),
             "tabloid" | "ledger" => return Ok(PageSize::Tabloid),
             "fill" | "full" | "fullscreen" | "full screen" | "full width" => {
-                return Ok(PageSize::Fill)
+                return Ok(PageSize::Fill);
             }
             _ => {}
         }

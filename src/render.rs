@@ -3,9 +3,9 @@
 //! All functions draw in document coordinates; the view translates the
 //! frame by the scroll offset first.
 
-use crate::doc::{Document, Leaf, Selection, OBJ, SOFT};
+use crate::doc::{Document, Leaf, OBJ, SOFT, Selection};
 use crate::fonts;
-use crate::layout::{face_for, Decor, Layout};
+use crate::layout::{Decor, Layout, face_for};
 use crate::style::Palette;
 use iced::widget::canvas::{Frame, Path, Stroke, Text};
 use iced::widget::text::{LineHeight, Shaping};
@@ -46,7 +46,9 @@ fn checkbox(frame: &mut Frame, x: f32, y: f32, size: f32, checked: bool, palette
         frame.fill(&rect, palette.page);
         frame.stroke(
             &rect,
-            Stroke::default().with_width(stroke).with_color(palette.marker),
+            Stroke::default()
+                .with_width(stroke)
+                .with_color(palette.marker),
         );
     }
 }

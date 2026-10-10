@@ -3,13 +3,13 @@
 
 use super::{Action, Command, EditKind, EditorState, Event, Inner, Mode, Snapshot};
 use crate::doc::{
-    Block, BlockKind, Container, Document, Flag, Leaf, Link, ListInfo, Pos, Selection, Style, OBJ,
+    Block, BlockKind, Container, Document, Flag, Leaf, Link, ListInfo, OBJ, Pos, Selection, Style,
 };
 use crate::images::{self, ImageId, ImageMode, ImageRejection, ImageSource, PastedImage};
 use crate::markdown;
-use iced::keyboard::{key::Named, Key, Modifiers};
-use iced::mouse::ScrollDelta;
 use iced::Task;
+use iced::keyboard::{Key, Modifiers, key::Named};
+use iced::mouse::ScrollDelta;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -369,8 +369,7 @@ impl EditorState {
                 if a == b {
                     return Task::none();
                 }
-                let copy =
-                    iced::clipboard::write(self.embedded.expand(&self.doc.plain_text(a, b)));
+                let copy = iced::clipboard::write(self.embedded.expand(&self.doc.plain_text(a, b)));
                 self.begin_edit(EditKind::Other);
                 let pos = self.doc.delete_range(a, b);
                 self.sel = Selection::caret(pos);
@@ -634,7 +633,8 @@ impl EditorState {
                         .and_then(|style| style.link.clone())
                 });
             if let Some(link) = url {
-                self.pending_events.push(Event::LinkClicked(link.url.clone()));
+                self.pending_events
+                    .push(Event::LinkClicked(link.url.clone()));
             }
         }
 
@@ -1253,10 +1253,7 @@ impl EditorState {
         let tasks: Vec<(usize, usize, bool)> = (a.block..=b.block)
             .filter_map(|index| {
                 let block = &self.doc.blocks[index];
-                let depth = block
-                    .containers
-                    .iter()
-                    .rposition(|c| c.task().is_some())?;
+                let depth = block.containers.iter().rposition(|c| c.task().is_some())?;
                 Some((index, depth, block.containers[depth].task()?))
             })
             .collect();
@@ -1437,7 +1434,9 @@ impl EditorState {
         };
 
         if rule_index + 1 >= self.doc.blocks.len() {
-            self.doc.blocks.push(Block::new(containers, Leaf::Paragraph));
+            self.doc
+                .blocks
+                .push(Block::new(containers, Leaf::Paragraph));
         }
 
         self.sel = Selection::caret(Pos::new(rule_index + 1, 0));
@@ -1746,7 +1745,10 @@ mod tests {
         let mut editor = EditorState::with_markdown(&text);
         editor.update(Action(Inner::ScrollBy { dx: 0.0, dy: 500.0 }));
         assert_eq!(editor.scroll_y, 500.0);
-        editor.update(Action(Inner::ScrollBy { dx: 0.0, dy: -9999.0 }));
+        editor.update(Action(Inner::ScrollBy {
+            dx: 0.0,
+            dy: -9999.0,
+        }));
         assert_eq!(editor.scroll_y, 0.0);
         editor.update(Action(Inner::ScrollTo {
             x: None,
