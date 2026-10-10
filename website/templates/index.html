@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>A Word-style Markdown editor for <span>iced</span></h1>
+  <p>WYSIWYG editing of CommonMark with pages, task lists, images and source mode.
+     Pure Rust. Desktop and web.</p>
+  <pre class="install">cargo add iced-markdown-editor</pre>
+  <p class="actions">
+    <a class="button primary" href="{{ get_url(path='/try/') }}">Try it in the browser</a>
+    <a class="button" href="{{ get_url(path='/guide/') }}">Get started</a>
+  </p>
+</section>
+<section class="demo">
+  <div class="window"><div class="bar"><i></i><i></i><i></i></div>
+    <iframe src="{{ get_url(path='/demo/index.html') }}" title="Live demo" loading="lazy"></iframe>
+  </div>
+</section>
+<section class="features">
+  {% for feature in section.extra.features %}
+  <div class="card"><h3>{{ feature[0] }}</h3><p>{{ feature[1] }}</p></div>
+  {% endfor %}
+</section>
+<section class="cta">
+  <h2>Add it to your app</h2>
+  <p>Latest release:
+    <a href="{{ config.extra.repository }}/releases/tag/v{{ config.extra.version }}">v{{ config.extra.version }}</a>
+  </p>
+  <pre>iced-markdown-editor = { version = "{{ config.extra.version }}", features = ["syntect", "images"] }</pre>
+  <a class="button primary" href="{{ config.extra.crate }}">crates.io</a>
+</section>
+{% endblock content %}

@@ -1,0 +1,9 @@
+(A) Incremental layout and undo snapshots for very large documents +performance
+(A) IME composition (iced 0.14 input method support) +i18n
+(A) API documentation with code examples +documentation
+(B) Auto-scroll while selecting with the mouse outside the editor +editing
+(B) Undo history across WYSIWYG / source switches +editing
+(B) Tables (GFM) +markdown
+(B) Clipboard images and file drops in the browser +web
+(C) Text flowing around images; animated GIFs +images
+(C) Print / PDF export using the paper setup +export

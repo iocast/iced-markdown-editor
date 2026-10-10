@@ -1,0 +1,73 @@
+# Builds the web demo (trunk) and the Zola site for a release tag and deploys to GitHub Pages.
+# One-time setup: Settings → Pages → Source: "GitHub Actions".
+
+name: Website
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  ZOLA_VERSION: "0.19.2"
+  RELEASE_TAG: ${{ github.ref_name }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: examples/web
+      - uses: jetli/trunk-action@v0.5.0
+        with:
+          version: latest
+      - id: pages
+        uses: actions/configure-pages@v5
+      - name: Web demo
+        working-directory: examples/web
+        run: >
+          trunk build --release
+          --public-url "${{ steps.pages.outputs.base_path }}/demo/"
+          --dist ../../website/static/demo
+      - name: Install Zola
+        run: |
+          curl -sSL "https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar xz
+          sudo mv zola /usr/local/bin/
+      - name: Set website release version
+        working-directory: website
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Expected a semantic-version release tag (vX.Y.Z[-prerelease][+build]), got $RELEASE_TAG"
+            exit 1
+          fi
+          version="${RELEASE_TAG#v}"
+          sed -i "s/^version = .*/version = \"${version}\"/" config.toml
+      - name: Site
+        working-directory: website
+        run: zola build --base-url "${{ steps.pages.outputs.base_url }}"
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

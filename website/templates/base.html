@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ config.title }}{% endblock title %}</title>
+  <meta name="description" content="{{ config.description }}">
+  <link rel="stylesheet" href="{{ get_url(path='style.css') }}">
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="{{ get_url(path='/') }}">iced-markdown-editor</a>
+    <nav>
+      <a href="{{ get_url(path='/try/') }}">Demo</a>
+      <a href="{{ get_url(path='/guide/') }}">Guide</a>
+      <a href="{{ config.extra.docs }}">Docs</a>
+      <a href="{{ config.extra.repository }}">GitHub</a>
+    </nav>
+  </header>
+  {% block content %}{% endblock content %}
+  <footer>MIT licensed · built with Rust, iced and Zola</footer>
+</body>
+</html>

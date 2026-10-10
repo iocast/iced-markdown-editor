@@ -1,0 +1,37 @@
+# Web example: the editor in the browser (WebAssembly, WebGL).
+#
+#   rustup target add wasm32-unknown-unknown
+#   cargo install trunk
+#   cd examples/web && trunk serve --open
+#
+# `cargo run` in this folder runs the same app on the desktop.
+
+[package]
+name = "iced-markdown-editor-web"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Own workspace: not part of the library package.
+[workspace]
+
+[dependencies]
+iced = "0.14"
+# `syntect`: syntax highlighting for code blocks (adds a few MB to the download).
+iced-markdown-editor = { path = "../..", features = ["images", "syntect"] }
+# File dialog; in the browser it opens the browser's file picker.
+rfd = "0.17"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+iced = { version = "0.14", features = ["tokio"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# WebGL works in every browser; without it iced needs WebGPU.
+iced = { version = "0.14", features = ["webgl"] }
+# Rust panics in the browser console instead of "unreachable".
+console_error_panic_hook = "0.1"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

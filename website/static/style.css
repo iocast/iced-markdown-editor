@@ -1,0 +1,29 @@
+:root { --ink:#1c1c1f; --muted:#5d6068; --accent:#1a5cc7; --bg:#f6f7f9; --card:#fff; }
+* { box-sizing: border-box; }
+body { margin:0; font:16px/1.6 system-ui, sans-serif; color:var(--ink); background:var(--bg); }
+a { color: var(--accent); text-decoration: none; }
+.nav { display:flex; justify-content:space-between; align-items:center; padding:14px 28px; background:#fff; border-bottom:1px solid #e3e5ea; }
+.nav nav a { margin-left:20px; color:var(--muted); }
+.brand { font-weight:700; color:var(--ink); }
+.hero { max-width:900px; margin:0 auto; padding:72px 24px 32px; text-align:center; }
+.hero h1 { font-size:44px; line-height:1.15; margin:0 0 16px; }
+.hero h1 span { color:var(--accent); }
+.hero p { color:var(--muted); font-size:19px; }
+pre { background:#16181d; color:#e7e9ee; padding:14px 18px; border-radius:8px; overflow:auto; text-align:left; }
+.install { display:inline-block; }
+.button { display:inline-block; padding:10px 20px; border-radius:8px; border:1px solid #cfd3da; background:#fff; margin:6px; }
+.button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.demo { max-width:1100px; margin:24px auto; padding:0 24px; }
+.window { border-radius:12px; overflow:hidden; box-shadow:0 20px 50px rgba(0,0,0,.18); background:#fff; }
+.window .bar { height:30px; background:#e9ebef; display:flex; align-items:center; gap:7px; padding-left:12px; }
+.window .bar i { width:11px; height:11px; border-radius:50%; background:#c9ccd3; }
+.window iframe { width:100%; height:620px; border:0; display:block; }
+.features { max-width:1100px; margin:56px auto; padding:0 24px; display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:18px; }
+.card { background:var(--card); border-radius:10px; padding:20px 22px; border:1px solid #e3e5ea; }
+.card h3 { margin:0 0 6px; }
+.card p { margin:0; color:var(--muted); }
+.cta { text-align:center; padding:40px 24px 72px; }
+.cta pre { display:inline-block; }
+.page { max-width:800px; margin:40px auto; padding:0 24px; }
+iframe.full { width:100%; height:calc(100vh - 56px); border:0; display:block; }
+footer { text-align:center; color:var(--muted); padding:24px; font-size:14px; }

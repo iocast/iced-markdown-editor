@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Live demo · {{ config.title }}{% endblock title %}
+{% block content %}
+<iframe class="full" src="{{ get_url(path='/demo/index.html') }}" title="Live demo"></iframe>
+{% endblock content %}
