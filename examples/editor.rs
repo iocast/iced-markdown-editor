@@ -54,6 +54,16 @@ the window, or use the **Image** button. Images are stored in `assets/`.
 > - one
 > - two
 
+## Tables
+
+| Key       | In a table                    |  Mode |
+| :-------- | :---------------------------: | ----: |
+| **Tab**   | next cell, a new row at the end | both |
+| **Enter** | cell below, leave on an empty row | WYSIWYG |
+| `\|`      | a pipe inside a cell          |   any |
+
+Type `| a | b |` and press **Enter** to start a table.
+
 ## Code
 
 ```rust

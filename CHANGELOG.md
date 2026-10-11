@@ -5,6 +5,12 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 
 ## [Unreleased]
 
+### Added
+- GFM tables: import and export with column alignment (also inside lists and block quotes), shown with borders and a shaded header row
+- Table editing: `Command::InsertTable`, `InsertRow`, `InsertColumn`, `DeleteRow`, `DeleteColumn`, `DeleteTable` and `SetColumnAlign` (new `ColumnAlign` type), with toolbar buttons
+- In a table `Tab` / `Shift+Tab` move between cells (adding a row after the last cell) and `Enter` moves to the cell below; typing `| a | b |` and pressing `Enter` creates a table
+- `Formatting::table` and `Formatting::column_align`
+
 ## [0.2.6] - 2026-10-10
 
 ### Added

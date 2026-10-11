@@ -3,7 +3,8 @@
 
 use super::{Action, Command, EditKind, EditorState, Event, Inner, Mode, Snapshot};
 use crate::doc::{
-    Block, BlockKind, Container, Document, Flag, Leaf, Link, ListInfo, OBJ, Pos, Selection, Style,
+    Block, BlockKind, ColumnAlign, Container, Document, Flag, Leaf, Link, ListInfo, OBJ, Pos,
+    Selection, Style,
 };
 use crate::images::{self, ImageId, ImageMode, ImageRejection, ImageSource, PastedImage};
 use crate::markdown;
@@ -221,6 +222,16 @@ fn wrap_quote(doc: &mut Document, first: usize, last: usize) {
     }
 }
 
+/// The header cells of a paragraph typed as `| a | b |` (autoformat).
+fn table_header(text: &str) -> Option<Vec<String>> {
+    let inner = text.trim().strip_prefix('|')?.strip_suffix('|')?;
+    let cells: Vec<String> = inner
+        .split('|')
+        .map(|cell| cell.trim().to_string())
+        .collect();
+    (!inner.trim().is_empty() && cells.len() <= 50).then_some(cells)
+}
+
 /// File name without extension, as image description.
 fn stem(name: Option<&str>) -> String {
     name.map(Path::new)
@@ -344,6 +355,16 @@ impl EditorState {
             Command::ToggleChecked => self.toggle_checked(),
             Command::SetCodeLanguage(language) => self.set_code_language(language),
             Command::InsertRule => self.insert_rule(),
+            Command::InsertTable { rows, columns } => self.insert_table(rows, columns),
+            Command::InsertRow { below } => {
+                self.table_edit(|doc, block| doc.insert_row(block, below).map(|b| Pos::new(b, 0)))
+            }
+            Command::InsertColumn { right } => self
+                .table_edit(|doc, block| doc.insert_column(block, right).map(|b| Pos::new(b, 0))),
+            Command::DeleteRow => self.table_edit(Document::delete_row),
+            Command::DeleteColumn => self.table_edit(Document::delete_column),
+            Command::DeleteTable => self.table_edit(Document::delete_table),
+            Command::SetColumnAlign(align) => self.set_column_align(align),
             Command::EditLink => self.link_open(),
             Command::InsertText(text) => self.insert_text(&text, EditKind::Other),
             Command::Indent => self.tab(false),
@@ -909,6 +930,9 @@ impl EditorState {
             return self.source_tab(outdent);
         }
         self.focused = true;
+        if self.doc.blocks[self.sel.head.block].cell().is_some() {
+            return self.table_tab(outdent);
+        }
 
         let (a, b) = self.sel.range();
         let all_items = (a.block..=b.block).all(|i| item_depth(&self.doc.blocks[i]).is_some());
@@ -1042,6 +1066,9 @@ impl EditorState {
         if pos.offset == 0 {
             let block = &self.doc.blocks[pos.block];
 
+            if block.cell().is_some() {
+                return Task::none();
+            }
             if block.leaf.is_raw() {
                 self.begin_edit(EditKind::Other);
                 let block = &mut self.doc.blocks[pos.block];
@@ -1111,7 +1138,8 @@ impl EditorState {
         let len = self.block_len(pos.block);
 
         if pos.offset >= len {
-            if pos.block + 1 >= self.doc.blocks.len() {
+            if pos.block + 1 >= self.doc.blocks.len() || self.doc.blocks[pos.block].cell().is_some()
+            {
                 return Task::none();
             }
             self.begin_edit(EditKind::Other);
@@ -1137,6 +1165,10 @@ impl EditorState {
     }
 
     fn enter(&mut self, line_break: bool) -> Task<Action> {
+        let (a, b) = self.sel.range();
+        if self.doc.blocks[a.block].cell().is_some() || self.doc.blocks[b.block].cell().is_some() {
+            return self.table_enter();
+        }
         self.begin_edit(EditKind::Other);
         let style = self.typing_style();
         let (a, b) = self.sel.range();
@@ -1190,6 +1222,19 @@ impl EditorState {
                 .filter(|info| !info.is_empty())
                 .map(|info| Arc::from(info.as_str()));
             Pos::new(pos.block, 0)
+        } else if leaf == Leaf::Paragraph && pos.offset == len && table_header(&text).is_some() {
+            let headers = table_header(&text).unwrap_or_default();
+            let block = &mut self.doc.blocks[pos.block];
+            block.chars.clear();
+            block.styles.clear();
+            let first = self
+                .doc
+                .insert_table(Pos::new(pos.block, 0), 2, headers.len());
+            for (column, header) in headers.iter().enumerate() {
+                let cell = Pos::new(first.block + column, 0);
+                self.doc.insert_text(cell, header, &Style::default());
+            }
+            Pos::new(first.block + headers.len(), 0)
         } else if leaf == Leaf::Paragraph && pos.offset == len && text == "---" {
             let block = &mut self.doc.blocks[pos.block];
             block.chars.clear();
@@ -1272,6 +1317,16 @@ impl EditorState {
         let (a, b) = self.sel.range();
         let (first, last) = (a.block, b.block);
         let blocks = &self.doc.blocks[first..=last];
+        // Table cells keep their kind; lists and quotes would split a table.
+        if blocks.iter().any(|block| block.cell().is_some()) {
+            let leaf_kind = matches!(
+                kind,
+                BlockKind::Paragraph | BlockKind::Heading(_) | BlockKind::Code | BlockKind::Html
+            );
+            if !leaf_kind || blocks.iter().all(|block| block.cell().is_some()) {
+                return Task::none();
+            }
+        }
 
         match kind {
             BlockKind::Task => {
@@ -1357,7 +1412,7 @@ impl EditorState {
                 };
                 let all = blocks
                     .iter()
-                    .filter(|block| block.leaf != Leaf::Rule)
+                    .filter(|block| block.leaf != Leaf::Rule && block.cell().is_none())
                     .all(|block| block.leaf == leaf);
                 let target = if all && leaf != Leaf::Paragraph {
                     Leaf::Paragraph
@@ -1366,7 +1421,7 @@ impl EditorState {
                 };
                 self.begin_edit(EditKind::Other);
                 for block in &mut self.doc.blocks[first..=last] {
-                    if block.leaf == Leaf::Rule {
+                    if block.leaf == Leaf::Rule || block.cell().is_some() {
                         continue;
                     }
                     block.leaf = target;
@@ -1408,8 +1463,11 @@ impl EditorState {
     }
 
     fn insert_rule(&mut self) -> Task<Action> {
-        self.begin_edit(EditKind::Other);
         let (a, b) = self.sel.range();
+        if self.doc.blocks[a.block].cell().is_some() || self.doc.blocks[b.block].cell().is_some() {
+            return Task::none();
+        }
+        self.begin_edit(EditKind::Other);
         let pos = self.doc.delete_range(a, b);
         let containers = self.doc.blocks[pos.block].containers.clone();
         let empty_paragraph = {
@@ -1440,6 +1498,167 @@ impl EditorState {
         }
 
         self.sel = Selection::caret(Pos::new(rule_index + 1, 0));
+        self.after_edit()
+    }
+
+    // ----------------------------------------------------------------
+    // Tables
+    // ----------------------------------------------------------------
+
+    fn insert_table(&mut self, rows: usize, columns: usize) -> Task<Action> {
+        let (a, b) = self.sel.range();
+        if self.doc.blocks[a.block].cell().is_some() || self.doc.blocks[b.block].cell().is_some() {
+            return Task::none();
+        }
+        self.begin_edit(EditKind::Other);
+        let pos = self.doc.delete_range(a, b);
+        let pos = self
+            .doc
+            .insert_table(pos, rows.clamp(1, 100), columns.clamp(1, 50));
+        self.sel = Selection::caret(pos);
+        self.pending = None;
+        self.after_edit()
+    }
+
+    /// Runs a table operation on the cell at the caret.
+    fn table_edit(
+        &mut self,
+        edit: impl FnOnce(&mut Document, usize) -> Option<Pos>,
+    ) -> Task<Action> {
+        let block = self.sel.head.block;
+        if self.doc.blocks[block].cell().is_none() {
+            return Task::none();
+        }
+        let before = Snapshot {
+            doc: self.doc.clone(),
+            sel: self.sel,
+        };
+        let Some(pos) = edit(&mut self.doc, block) else {
+            return Task::none();
+        };
+        self.undo.push(before);
+        self.redo.clear();
+        self.last_edit = EditKind::None;
+        self.pending = None;
+        self.sel = Selection::caret(self.doc.clamp(pos));
+        self.after_edit()
+    }
+
+    fn set_column_align(&mut self, align: ColumnAlign) -> Task<Action> {
+        let block = self.sel.head.block;
+        if self.doc.blocks[block].cell().is_none() {
+            return Task::none();
+        }
+        let before = Snapshot {
+            doc: self.doc.clone(),
+            sel: self.sel,
+        };
+        if !self.doc.set_column_align(block, align) {
+            return Task::none();
+        }
+        self.undo.push(before);
+        self.redo.clear();
+        self.last_edit = EditKind::None;
+        self.after_edit()
+    }
+
+    /// Selects the content of a cell.
+    fn select_cell(&mut self, block: usize) -> Task<Action> {
+        self.sel = Selection {
+            anchor: Pos::new(block, 0),
+            head: Pos::new(block, self.block_len(block)),
+        };
+        self.pending = None;
+        self.goal_x = None;
+        self.last_edit = EditKind::None;
+        self.touch();
+        self.scroll_to_caret()
+    }
+
+    /// Tab: next cell, a new row after the last one. Shift+Tab: previous cell.
+    fn table_tab(&mut self, back: bool) -> Task<Action> {
+        let block = self.sel.head.block;
+        let Some((start, end)) = self.doc.table_range(block) else {
+            return Task::none();
+        };
+        if back {
+            return if block > start {
+                self.select_cell(block - 1)
+            } else {
+                Task::none()
+            };
+        }
+        if block + 1 < end {
+            return self.select_cell(block + 1);
+        }
+        self.begin_edit(EditKind::Other);
+        let Some(cell) = self.doc.insert_row(block, true) else {
+            return Task::none();
+        };
+        let first = self
+            .doc
+            .cell_position(cell)
+            .map(|(_, column)| cell - column)
+            .unwrap_or(cell);
+        self.sel = Selection::caret(Pos::new(first, 0));
+        self.pending = None;
+        self.after_edit()
+    }
+
+    /// Enter in a table: the cell below; after the last row a new row, or,
+    /// in an empty last row, a paragraph after the table.
+    fn table_enter(&mut self) -> Task<Action> {
+        let (a, b) = self.sel.range();
+        let edited = a != b;
+        if edited {
+            self.begin_edit(EditKind::Other);
+            let pos = self.doc.delete_range(a, b);
+            self.sel = Selection::caret(pos);
+        }
+        let block = self.sel.head.block;
+        let (Some((start, end)), Some((row, column))) =
+            (self.doc.table_range(block), self.doc.cell_position(block))
+        else {
+            return if edited {
+                self.after_edit()
+            } else {
+                Task::none()
+            };
+        };
+        let rows = self.doc.table_rows(start, end);
+
+        if row + 1 < rows.len() {
+            let (first, last) = rows[row + 1];
+            let below = first + column.min(last - first - 1);
+            self.sel = Selection::caret(Pos::new(below, self.block_len(below)));
+            self.pending = None;
+            self.goal_x = None;
+            if edited {
+                return self.after_edit();
+            }
+            self.last_edit = EditKind::None;
+            self.touch();
+            return self.scroll_to_caret();
+        }
+
+        if !edited {
+            self.begin_edit(EditKind::Other);
+        }
+        let (first, last) = rows[row];
+        let empty = row > 0 && (first..last).all(|index| self.doc.blocks[index].is_empty());
+        let next = if empty {
+            let containers = self.doc.blocks[block].containers.clone();
+            self.doc.blocks.drain(first..last);
+            self.doc
+                .blocks
+                .insert(first, Block::new(containers, Leaf::Paragraph));
+            Pos::new(first, 0)
+        } else {
+            let cell = self.doc.insert_row(block, true).unwrap_or(block);
+            Pos::new(cell, 0)
+        };
+        self.sel = Selection::caret(next);
+        self.pending = None;
         self.after_edit()
     }
 
@@ -1737,6 +1956,177 @@ mod tests {
         let mut editor = EditorState::new().images(ImageSettings::embed());
         let events = editor.execute(Command::RequestImage).events;
         assert!(events.contains(&Event::ImageRequested));
+    }
+
+    #[test]
+    fn insert_table_and_type_in_cells() {
+        let mut editor = EditorState::with_markdown("intro\n");
+        editor.sel = Selection::caret(Pos::new(0, 5));
+        editor.execute(Command::InsertTable {
+            rows: 2,
+            columns: 2,
+        });
+        assert_eq!(editor.sel.head, Pos::new(1, 0));
+        editor.execute(Command::InsertText("a".into()));
+        editor.execute(Command::Indent);
+        editor.execute(Command::InsertText("b".into()));
+        editor.execute(Command::Indent);
+        editor.execute(Command::InsertText("1\n2".into()));
+        assert_eq!(
+            editor.markdown(),
+            "intro\n\n| a   | b   |\n| --- | --- |\n| 1 2 |     |\n"
+        );
+        assert_eq!(
+            editor.doc.plain_text(Pos::new(1, 0), Pos::new(4, 0)),
+            "a\tb\n1 2\t"
+        );
+    }
+
+    #[test]
+    fn tab_moves_between_cells_and_adds_rows() {
+        let mut editor = EditorState::with_markdown("| a |\n| - |\n| 1 |\n");
+        editor.sel = Selection::caret(Pos::new(1, 1));
+        editor.execute(Command::Indent);
+        assert_eq!(editor.doc.blocks.len(), 3);
+        assert_eq!(editor.sel, Selection::caret(Pos::new(2, 0)));
+        editor.execute(Command::Outdent);
+        assert_eq!(
+            editor.sel,
+            Selection {
+                anchor: Pos::new(1, 0),
+                head: Pos::new(1, 1),
+            }
+        );
+    }
+
+    #[test]
+    fn enter_moves_down_adds_rows_and_leaves_the_table() {
+        let mut editor = EditorState::with_markdown("| a | b |\n| - | - |\n| 1 | 2 |\n");
+        editor.sel = Selection::caret(Pos::new(1, 1));
+        let _ = editor.enter(false);
+        assert_eq!(editor.sel.head, Pos::new(3, 1));
+        let _ = editor.enter(false);
+        assert_eq!(editor.doc.blocks.len(), 6);
+        assert_eq!(editor.sel.head, Pos::new(5, 0));
+        let _ = editor.enter(false);
+        assert_eq!(editor.doc.blocks.len(), 5);
+        assert_eq!(editor.doc.blocks[4].leaf, Leaf::Paragraph);
+        assert_eq!(editor.sel.head, Pos::new(4, 0));
+        editor.execute(Command::InsertText("after".into()));
+        assert_eq!(
+            editor.markdown(),
+            "| a   | b   |\n| --- | --- |\n| 1   | 2   |\n\nafter\n"
+        );
+    }
+
+    #[test]
+    fn typing_a_header_row_creates_a_table() {
+        let mut editor = EditorState::new();
+        editor.execute(Command::InsertText("| Name | Age |".into()));
+        let _ = editor.enter(false);
+        assert_eq!(editor.sel.head, Pos::new(2, 0));
+        editor.execute(Command::InsertText("Ann".into()));
+        assert_eq!(
+            editor.markdown(),
+            "| Name | Age |\n| ---- | --- |\n| Ann  |     |\n"
+        );
+    }
+
+    #[test]
+    fn backspace_and_delete_keep_cells() {
+        let mut editor = EditorState::with_markdown("| a | b |\n| - | - |\n\nx\n");
+        editor.sel = Selection::caret(Pos::new(1, 0));
+        let _ = editor.backspace(false);
+        assert_eq!(editor.doc.blocks.len(), 3);
+        editor.sel = Selection::caret(Pos::new(0, 1));
+        let _ = editor.delete_forward(false);
+        assert_eq!(editor.doc.blocks[0].text(), "a");
+        // At the start of the paragraph after the table: into the last cell.
+        editor.sel = Selection::caret(Pos::new(2, 0));
+        let _ = editor.backspace(false);
+        assert_eq!(editor.sel.head, Pos::new(1, 1));
+        assert_eq!(editor.markdown(), "| a   | b   |\n| --- | --- |\n\nx\n");
+        // Block kinds that would split the table do nothing.
+        editor.sel = Selection::caret(Pos::new(0, 0));
+        editor.execute(Command::SetBlock(BlockKind::Bullet));
+        editor.execute(Command::SetBlock(BlockKind::Heading(1)));
+        editor.execute(Command::InsertRule);
+        assert_eq!(editor.markdown(), "| a   | b   |\n| --- | --- |\n\nx\n");
+    }
+
+    #[test]
+    fn deleting_across_a_table() {
+        let mut doc = parse("before\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nafter\n");
+        let pos = doc.delete_range(Pos::new(2, 0), Pos::new(5, 2));
+        assert_eq!(pos, Pos::new(2, 0));
+        assert_eq!(
+            round(&doc),
+            "before\n\n| a   |     |\n| --- | --- |\n|     |     |\n\nter\n"
+        );
+
+        let mut doc = parse("before\n\n| a | b |\n| - | - |\n\nafter\n");
+        let pos = doc.delete_range(Pos::new(0, 3), Pos::new(3, 2));
+        assert_eq!(pos, Pos::new(0, 3));
+        assert_eq!(round(&doc), "befter\n");
+    }
+
+    #[test]
+    fn row_and_column_commands() {
+        let mut editor = EditorState::with_markdown("| a | b |\n| - | - |\n| 1 | 2 |\n");
+        editor.sel = Selection::caret(Pos::new(0, 0));
+        editor.execute(Command::SetColumnAlign(ColumnAlign::Center));
+        assert_eq!(editor.formatting().column_align, Some(ColumnAlign::Center));
+        editor.execute(Command::InsertColumn { right: true });
+        editor.execute(Command::InsertRow { below: false });
+        assert_eq!(
+            editor.markdown(),
+            "|     |     |     |\n| :-: | --- | --- |\n| a   |     | b   |\n| 1   |     | 2   |\n"
+        );
+        editor.execute(Command::DeleteRow);
+        editor.execute(Command::DeleteColumn);
+        assert_eq!(
+            editor.markdown(),
+            "| a   | b   |\n| :-: | --- |\n| 1   | 2   |\n"
+        );
+        editor.execute(Command::Undo);
+        editor.execute(Command::DeleteTable);
+        assert_eq!(editor.markdown(), "\n");
+        assert!(!editor.formatting().table);
+    }
+
+    #[test]
+    fn table_layout_and_navigation() {
+        let editor = EditorState::with_markdown("| a | b |\n| - | - |\n| 1 | 2 |\n\nend\n");
+        let layout = editor.layout.borrow();
+        let (ax, ay, _) = layout.caret(Pos::new(0, 0)).unwrap();
+        let (bx, by, _) = layout.caret(Pos::new(1, 0)).unwrap();
+        let (_, y1, _) = layout.caret(Pos::new(2, 0)).unwrap();
+        assert_eq!(ay, by);
+        assert!(bx > ax);
+        assert!(y1 > ay);
+        assert_eq!(layout.hit(bx + 1.0, by + 1.0).block, 1);
+        assert_eq!(layout.vertical(Pos::new(1, 0), bx, 1), Some(Pos::new(3, 0)));
+        assert_eq!(
+            layout.vertical(Pos::new(3, 0), bx, 1).map(|p| p.block),
+            Some(4)
+        );
+        assert_eq!(
+            layout.vertical(Pos::new(4, 0), ax, -1).map(|p| p.block),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn insert_table_in_source_mode() {
+        let mut editor = EditorState::with_markdown("x").mode(Mode::Source);
+        editor.execute(Command::InsertTable {
+            rows: 2,
+            columns: 2,
+        });
+        assert_eq!(
+            editor.markdown(),
+            "x\n\n|     |     |\n| --- | --- |\n|     |     |\n"
+        );
     }
 
     #[test]

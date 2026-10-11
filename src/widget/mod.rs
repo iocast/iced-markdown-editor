@@ -15,7 +15,7 @@ mod view;
 
 pub use view::{MarkdownEditor, markdown_editor};
 
-use crate::doc::{Block, BlockKind, Container, Document, Leaf, Pos, Selection, Style};
+use crate::doc::{Block, BlockKind, ColumnAlign, Container, Document, Leaf, Pos, Selection, Style};
 use crate::fonts::Fonts;
 use crate::highlight::{self, COMMON_LANGUAGES, CodeHighlighter, HighlightRequest};
 use crate::images::{
@@ -122,6 +122,27 @@ pub enum Command {
     /// Sets the language of the code block(s) under the selection.
     SetCodeLanguage(Option<String>),
     InsertRule,
+    /// Inserts an empty table; `rows` includes the header row.
+    InsertTable {
+        rows: usize,
+        columns: usize,
+    },
+    /// Inserts a row above or below the row at the caret.
+    InsertRow {
+        below: bool,
+    },
+    /// Inserts a column left or right of the column at the caret.
+    InsertColumn {
+        right: bool,
+    },
+    /// Deletes the table row at the caret.
+    DeleteRow,
+    /// Deletes the table column at the caret.
+    DeleteColumn,
+    /// Deletes the table at the caret.
+    DeleteTable,
+    /// Aligns the table column at the caret.
+    SetColumnAlign(ColumnAlign),
     /// Opens the link bar for the selection (or word under the caret).
     EditLink,
     /// Inserts text at the caret, replacing the selection.
@@ -229,6 +250,10 @@ pub struct Formatting {
     pub quote: bool,
     /// Language of the code block at the caret, if any.
     pub code_language: Option<String>,
+    /// The caret is inside a table.
+    pub table: bool,
+    /// Alignment of the table column at the caret.
+    pub column_align: Option<ColumnAlign>,
 }
 
 pub(crate) struct Snapshot {
@@ -557,7 +582,7 @@ impl EditorState {
         };
         let block = &self.doc.blocks[self.sel.head.block];
         let leaf_kind = match block.leaf {
-            Leaf::Paragraph | Leaf::Line => BlockKind::Paragraph,
+            Leaf::Paragraph | Leaf::Line | Leaf::Cell(_) => BlockKind::Paragraph,
             Leaf::Heading(level) => BlockKind::Heading(level),
             Leaf::Code => BlockKind::Code,
             Leaf::Html => BlockKind::Html,
@@ -588,6 +613,8 @@ impl EditorState {
             } else {
                 None
             },
+            table: block.cell().is_some(),
+            column_align: block.cell().map(|cell| cell.align),
         }
     }
 

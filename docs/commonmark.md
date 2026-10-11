@@ -1,8 +1,9 @@
 # CommonMark
 
-CommonMark 0.31.2 plus GFM strikethrough and task lists. Paragraphs, headings,
-lists (nested, tight/loose, any start), task lists, block quotes, code blocks
-with language, HTML blocks, thematic breaks, emphasis, strong, strikethrough,
+CommonMark 0.31.2 plus GFM strikethrough, task lists and tables. Paragraphs,
+headings, lists (nested, tight/loose, any start), task lists, block quotes,
+code blocks with language, HTML blocks, thematic breaks, tables (with column
+alignment, also inside lists and quotes), emphasis, strong, strikethrough,
 code spans, links with titles, autolinks, images, raw inline HTML.
 
 `cargo test --all-features`: 632 of the 652 spec examples produce the same
@@ -14,4 +15,6 @@ HTML after a round trip. The other 20 look the same when rendered:
 
 Not preserved: link reference definitions (written inline), original
 markers (`+`, `__bold__`, indented code are normalised), hard breaks at the
-start or end of a paragraph, task items without text.
+start or end of a paragraph, task items without text. Tables are written with
+padded columns and leading / trailing pipes; cells beyond the header's column
+count are dropped (as GFM does) and short rows are filled with empty cells.

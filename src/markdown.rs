@@ -1,7 +1,8 @@
 //! CommonMark import and export.
 //!
-//! Import uses `pulldown-cmark`, a CommonMark 0.31.2 parser, with two GFM
-//! extensions: `~~strikethrough~~` and task lists (`- [ ]` / `- [x]`).
+//! Import uses `pulldown-cmark`, a CommonMark 0.31.2 parser, with three GFM
+//! extensions: `~~strikethrough~~`, task lists (`- [ ]` / `- [x]`) and
+//! tables.
 //! Export writes Markdown that parses back to the same document; the round
 //! trip is tested against all 652 examples of the CommonMark 0.31.2
 //! specification and against random documents (see the tests at the end of
@@ -13,13 +14,18 @@
 //! directly after a letter), so such paragraphs fall back to
 //! `<strong>`, `<em>` and `<del>` tags, which the importer recognises.
 
-use crate::doc::{Block, Container, Document, Flag, Leaf, Link, ListInfo, OBJ, SOFT, Style};
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, LinkType, Options, Parser, Tag};
+use crate::doc::{
+    Block, Cell, ColumnAlign, Container, Document, Flag, Leaf, Link, ListInfo, OBJ, SOFT, Style,
+    next_id,
+};
+use pulldown_cmark::{
+    Alignment, CodeBlockKind, Event, HeadingLevel, LinkType, Options, Parser, Tag,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 fn options() -> Options {
-    Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS
+    Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_TABLES
 }
 
 fn is_break(c: char) -> bool {
@@ -43,7 +49,18 @@ enum Ctx {
     Strike,
     Link,
     Image,
+    Table,
+    TableCell,
     Other,
+}
+
+/// The table being read.
+struct TableState {
+    id: u64,
+    aligns: Vec<ColumnAlign>,
+    row: u64,
+    header: bool,
+    column: usize,
 }
 
 /// Inline HTML tags that map to formatting (the export fallback).
@@ -100,6 +117,7 @@ struct Builder {
     links: Vec<(Arc<Link>, usize)>,
     /// Open image: (target, start index).
     image: Option<(Arc<Link>, usize)>,
+    table: Option<TableState>,
 }
 
 impl Builder {
@@ -381,6 +399,47 @@ impl Builder {
                     .push((Link::new(url, Some(title.to_string())), start));
                 self.stack.push(Ctx::Link);
             }
+            Tag::Table(aligns) => {
+                self.flush();
+                self.table = Some(TableState {
+                    id: next_id(),
+                    aligns: aligns
+                        .iter()
+                        .map(|align| match align {
+                            Alignment::None => ColumnAlign::None,
+                            Alignment::Left => ColumnAlign::Left,
+                            Alignment::Center => ColumnAlign::Center,
+                            Alignment::Right => ColumnAlign::Right,
+                        })
+                        .collect(),
+                    row: 0,
+                    header: false,
+                    column: 0,
+                });
+                self.stack.push(Ctx::Table);
+            }
+            Tag::TableHead | Tag::TableRow => {
+                if let Some(table) = self.table.as_mut() {
+                    table.row = next_id();
+                    table.header = matches!(tag, Tag::TableHead);
+                    table.column = 0;
+                }
+                self.stack.push(Ctx::Other);
+            }
+            Tag::TableCell => {
+                let cell = self.table.as_mut().map(|table| {
+                    let align = table.aligns.get(table.column).copied().unwrap_or_default();
+                    table.column += 1;
+                    Cell {
+                        table: table.id,
+                        row: table.row,
+                        header: table.header,
+                        align,
+                    }
+                });
+                self.begin(cell.map(Leaf::Cell).unwrap_or(Leaf::Paragraph));
+                self.stack.push(Ctx::TableCell);
+            }
             Tag::Image {
                 dest_url, title, ..
             } => {
@@ -398,8 +457,11 @@ impl Builder {
 
     fn end(&mut self) {
         match self.stack.pop() {
-            Some(Ctx::Paragraph) | Some(Ctx::Heading) | Some(Ctx::Code) | Some(Ctx::Html) => {
-                self.flush()
+            Some(Ctx::Paragraph) | Some(Ctx::Heading) | Some(Ctx::Code) | Some(Ctx::Html)
+            | Some(Ctx::TableCell) => self.flush(),
+            Some(Ctx::Table) => {
+                self.flush();
+                self.table = None;
             }
             Some(Ctx::Quote) | Some(Ctx::Item) => {
                 self.flush();
@@ -1133,6 +1195,20 @@ fn can_interrupt(a: &Block, b: &Block, common: usize) -> bool {
         // An HTML block ends when its container closes.
         return common < a.containers.len();
     }
+    if a.cell().is_some() {
+        // A table continues with every line that is not another block.
+        if b.containers.len() > common {
+            return true;
+        }
+        return match b.leaf {
+            Leaf::Heading(_) | Leaf::Code | Leaf::Rule => !is_setext(b),
+            Leaf::Html => {
+                let text = b.text();
+                html_interrupts(text.split('\n').next().unwrap_or(""))
+            }
+            Leaf::Paragraph | Leaf::Line | Leaf::Cell(_) => false,
+        };
+    }
     if a.leaf != Leaf::Paragraph || strip_edges(a).chars.is_empty() {
         return true;
     }
@@ -1162,6 +1238,9 @@ fn can_interrupt(a: &Block, b: &Block, common: usize) -> bool {
     }
     match b.leaf {
         Leaf::Heading(_) | Leaf::Code | Leaf::Rule => true,
+        // Outside the paragraph's container the header row would be a lazy
+        // continuation line of the paragraph.
+        Leaf::Cell(_) => common >= a.containers.len(),
         Leaf::Html => {
             let text = b.text();
             html_interrupts(text.split('\n').next().unwrap_or(""))
@@ -1195,8 +1274,120 @@ fn needs_blank(a: &Block, b: &Block, common: usize) -> bool {
     !(shared.is_some_and(|list| list.tight) && can_interrupt(a, b, common))
 }
 
+/// Escapes the `|` that would end a table cell (also inside code spans and
+/// link targets, where GFM removes the backslash again). Text already has
+/// `\|`; with `all`, every `|` gets one more backslash, for a literal `\|`
+/// inside a code span.
+fn escape_pipes(text: &str, all: bool) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut previous = None;
+    for c in text.chars() {
+        if c == '|' && (all || previous != Some('\\')) {
+            out.push('\\');
+        }
+        out.push(c);
+        previous = Some(c);
+    }
+    out
+}
+
+/// The content of a table cell on one line.
+fn cell_md(block: &Block) -> String {
+    let mut block = block.clone();
+    for c in &mut block.chars {
+        if is_break(*c) {
+            *c = ' ';
+        }
+    }
+    let mut text = String::new();
+    for (use_html, all) in [(false, false), (false, true), (true, false), (true, true)] {
+        text = escape_pipes(
+            &inline_md(&block.chars, &block.styles, false, use_html),
+            all,
+        );
+        if block.chars.is_empty() {
+            return text;
+        }
+        let back = parse(&format!("| {text} |\n| --- |\n"));
+        if back.blocks.len() == 1
+            && back.blocks[0].chars == block.chars
+            && back.blocks[0].styles == block.styles
+        {
+            return text;
+        }
+    }
+    text
+}
+
+/// A table as Markdown lines, columns padded to the same width.
+fn table_lines(cells: &[Block]) -> String {
+    let mut rows: Vec<Vec<&Block>> = Vec::new();
+    for cell in cells {
+        let row = cell.cell().map(|cell| cell.row);
+        match rows.last_mut() {
+            Some(last) if last[0].cell().map(|cell| cell.row) == row => last.push(cell),
+            _ => rows.push(vec![cell]),
+        }
+    }
+    let columns = rows.iter().map(Vec::len).max().unwrap_or(1);
+    let texts: Vec<Vec<String>> = rows
+        .iter()
+        .map(|row| {
+            let mut texts: Vec<String> = row.iter().map(|cell| cell_md(cell)).collect();
+            texts.resize(columns, String::new());
+            texts
+        })
+        .collect();
+    let aligns: Vec<ColumnAlign> = (0..columns)
+        .map(|column| {
+            rows[0]
+                .get(column)
+                .and_then(|cell| cell.cell())
+                .map(|cell| cell.align)
+                .unwrap_or_default()
+        })
+        .collect();
+    let widths: Vec<usize> = (0..columns)
+        .map(|column| {
+            texts
+                .iter()
+                .map(|row| row[column].chars().count())
+                .max()
+                .unwrap_or(0)
+                .max(3)
+        })
+        .collect();
+
+    let line = |row: &[String]| {
+        let cells: Vec<String> = row
+            .iter()
+            .zip(&widths)
+            .map(|(text, width)| {
+                let pad = width - text.chars().count();
+                format!("{text}{}", " ".repeat(pad))
+            })
+            .collect();
+        format!("| {} |", cells.join(" | "))
+    };
+    let delimiter: Vec<String> = aligns
+        .iter()
+        .zip(&widths)
+        .map(|(align, width)| match align {
+            ColumnAlign::None => "-".repeat(*width),
+            ColumnAlign::Left => format!(":{}", "-".repeat(width - 1)),
+            ColumnAlign::Right => format!("{}:", "-".repeat(width - 1)),
+            ColumnAlign::Center => format!(":{}:", "-".repeat(width - 2)),
+        })
+        .collect();
+
+    let mut lines = vec![line(&texts[0]), format!("| {} |", delimiter.join(" | "))];
+    lines.extend(texts[1..].iter().map(|row| line(row)));
+    lines.join("\n")
+}
+
 fn block_lines(block: &Block) -> Option<String> {
     match block.leaf {
+        Leaf::Cell(_) => Some(table_lines(std::slice::from_ref(block))),
         Leaf::Rule => Some("___".into()), // never confused with a list marker
         Leaf::Html | Leaf::Line => Some(block.text()),
         Leaf::Paragraph => {
@@ -1304,8 +1495,26 @@ pub fn serialize(doc: &Document) -> String {
     let mut list_marker: HashMap<u64, char> = HashMap::new();
     let mut list_counter: HashMap<u64, u64> = HashMap::new();
     let mut previous: Option<&Block> = None;
+    let mut index = 0;
 
-    for block in &blocks {
+    while index < blocks.len() {
+        let block = &blocks[index];
+        // A table is written as a whole: from its first to its last cell.
+        let end = match block.cell() {
+            Some(cell) => {
+                let mut end = index + 1;
+                while blocks
+                    .get(end)
+                    .and_then(Block::cell)
+                    .is_some_and(|other| other.table == cell.table)
+                {
+                    end += 1;
+                }
+                end
+            }
+            None => index + 1,
+        };
+        let start = std::mem::replace(&mut index, end);
         let containers = &block.containers;
         let mut common = 0;
         if let Some(prev) = previous {
@@ -1373,7 +1582,12 @@ pub fn serialize(doc: &Document) -> String {
             first.push_str(task);
         }
         let cont = cont_prefix(containers, &markers);
-        match block_lines(block) {
+        let body = if block.cell().is_some() {
+            Some(table_lines(&blocks[start..end]))
+        } else {
+            block_lines(block)
+        };
+        match body {
             None => lines.push(first.trim_end().to_string()),
             Some(body) => {
                 for (k, line) in body.split('\n').enumerate() {
@@ -1387,7 +1601,7 @@ pub fn serialize(doc: &Document) -> String {
             }
         }
 
-        previous = Some(block);
+        previous = Some(&blocks[end - 1]);
     }
 
     let mut out = lines.join("\n");
@@ -1522,6 +1736,43 @@ mod tests {
     }
 
     #[test]
+    fn tables() {
+        for source in [
+            "| a   | b   |\n| --- | --- |\n| 1   | 2   |\n",
+            "| left | center | right | none |\n| :--- | :----: | ----: | ---- |\n| 1    | 2      | 3     | 4    |\n",
+            "| **bold** | `code` | [link](https://x.org) |\n| -------- | ------ | --------------------- |\n",
+            "| a\\|b | `x\\|y` |\n| ---- | ------ |\n|      |        |\n",
+            "text\n\n| a   |\n| --- |\n\nmore text\n",
+            "- item\n- | a   |\n  | --- |\n  | 1   |\n- next\n",
+            "> | a   |\n> | --- |\n> | 1   |\n",
+            "| a   |\n| --- |\n\n| b   |\n| --- |\n",
+            "| a   |\n| --- |\n\n# heading\n",
+            "| &#32;x&#32; |\n| ----------- |\n",
+        ] {
+            assert_eq!(normalize(source), source, "table changed");
+        }
+
+        let doc = parse("| a | b |\n|:-|-:|\n| 1 |\n");
+        assert_eq!(doc.blocks.len(), 4);
+        let cells: Vec<Cell> = doc.blocks.iter().filter_map(Block::cell).collect();
+        assert!(cells[0].header && cells[1].header && !cells[2].header);
+        assert_eq!(cells[0].row, cells[1].row);
+        assert_ne!(cells[1].row, cells[2].row);
+        assert!(cells.iter().all(|cell| cell.table == cells[0].table));
+        assert_eq!(cells[0].align, ColumnAlign::Left);
+        assert_eq!(cells[3].align, ColumnAlign::Right);
+        assert_eq!(doc.blocks[3].text(), "", "missing cells are filled");
+
+        // Not a table: the delimiter row does not match the header.
+        assert_eq!(parse("| a | b |\n| - |\n").blocks[0].leaf, Leaf::Paragraph);
+        // A paragraph after a table needs a blank line.
+        let mut doc = parse("| a |\n| - |\n");
+        doc.blocks.push(Block::new(Vec::new(), Leaf::Paragraph));
+        doc.blocks[1].push('x', Style::default());
+        assert_eq!(serialize(&doc), "| a   |\n| --- |\n\nx\n");
+    }
+
+    #[test]
     fn image_markdown_round_trips() {
         let text = image_markdown("a [b]", "assets/my image.png");
         assert_eq!(text, "![a \\[b\\]](<assets/my image.png>)");
@@ -1597,6 +1848,41 @@ mod tests {
                 let mut inner = path.clone();
                 inner.push(Container::quote());
                 random_blocks(rng, inner, depth + 1, out);
+            } else if (44..50).contains(&roll) {
+                let table = crate::doc::next_id();
+                let columns = 1 + rng.below(3);
+                let aligns: Vec<ColumnAlign> = (0..columns)
+                    .map(|_| {
+                        *rng.pick(&[
+                            ColumnAlign::None,
+                            ColumnAlign::Left,
+                            ColumnAlign::Center,
+                            ColumnAlign::Right,
+                        ])
+                    })
+                    .collect();
+                for row in 0..1 + rng.below(3) {
+                    let id = crate::doc::next_id();
+                    for align in &aligns {
+                        let mut block = Block::new(
+                            path.clone(),
+                            Leaf::Cell(Cell {
+                                table,
+                                row: id,
+                                header: row == 0,
+                                align: *align,
+                            }),
+                        );
+                        let len = rng.below(8) as usize;
+                        let (chars, styles) = random_inline(rng, len);
+                        block.chars = chars
+                            .into_iter()
+                            .map(|c| if is_break(c) { 'q' } else { c })
+                            .collect();
+                        block.styles = styles;
+                        out.push(block);
+                    }
+                }
             } else if depth < 3 && roll < 40 {
                 let mut list = ListInfo::new(rng.chance(0.5), *rng.pick(&[1, 1, 3, 10]));
                 list.tight = rng.chance(0.6);
@@ -1745,9 +2031,19 @@ mod tests {
                         }
                     })
                     .collect();
+                let leaf = match block.leaf {
+                    Leaf::Cell(cell) => format!(
+                        "Cell({}, {}, {}, {:?})",
+                        id('t', cell.table),
+                        id('r', cell.row),
+                        cell.header,
+                        cell.align
+                    ),
+                    leaf => format!("{leaf:?}"),
+                };
                 (
                     containers,
-                    format!("{:?}", block.leaf),
+                    leaf,
                     block.text(),
                     styles,
                     block.info.as_deref().map(str::to_string),
@@ -1767,7 +2063,9 @@ mod tests {
             let written = serialize(&doc);
             let back = parse(&written);
             if canon(&back.blocks) != canon(&expected(&doc.blocks)) {
-                failures.push(format!("not preserved:\n{written}"));
+                let (x, y) = (canon(&back.blocks), canon(&expected(&doc.blocks)));
+                let diff = x.iter().zip(&y).find(|(a, b)| a != b);
+                failures.push(format!("not preserved:\n{written}\n{diff:#?}"));
                 continue;
             }
             let again = serialize(&back);

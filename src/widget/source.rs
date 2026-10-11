@@ -13,6 +13,7 @@
 
 use super::{Action, Command, EditKind, EditorState, Snapshot};
 use crate::doc::{Block, BlockKind, Document, Leaf, Pos, Selection, Style};
+use crate::markdown;
 use iced::Task;
 use std::collections::HashMap;
 
@@ -745,6 +746,22 @@ impl EditorState {
         self.after_edit()
     }
 
+    /// Inserts an empty table after the current line(s).
+    fn source_table(&mut self, rows: usize, columns: usize) -> Task<Action> {
+        let mut table = Document::default();
+        table.insert_table(Pos::new(0, 0), rows, columns);
+        let text = markdown::serialize(&table);
+        let text = text.trim_end();
+        let (_, last) = self.source_line_range();
+        self.begin_edit(EditKind::Other);
+        let end = Pos::new(last, self.block_len(last));
+        let start = self.doc.insert_text(end, "\n\n", &Style::default());
+        self.doc.insert_text(start, text, &Style::default());
+        // Caret in the first header cell.
+        self.sel = Selection::caret(Pos::new(start.block, 2));
+        self.after_edit()
+    }
+
     /// Runs a command in source mode. `None` when the command works the
     /// same in both modes.
     pub(crate) fn source_command(&mut self, command: &Command) -> Option<Task<Action>> {
@@ -764,6 +781,13 @@ impl EditorState {
                 })
             }
             Command::InsertRule => self.source_rule(),
+            Command::InsertTable { rows, columns } => self.source_table(*rows, *columns),
+            Command::InsertRow { .. }
+            | Command::InsertColumn { .. }
+            | Command::DeleteRow
+            | Command::DeleteColumn
+            | Command::DeleteTable
+            | Command::SetColumnAlign(_) => Task::none(),
             Command::Indent => self.source_tab(false),
             Command::Outdent => self.source_tab(true),
             Command::SetCodeLanguage(_) => Task::none(),

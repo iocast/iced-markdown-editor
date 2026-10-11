@@ -1,7 +1,8 @@
 //! # iced-markdown-editor
 //!
 //! A Word-style WYSIWYG CommonMark editor widget for [Iced](https://iced.rs),
-//! with the GFM extensions strikethrough and task lists. Desktop and web.
+//! with the GFM extensions strikethrough, task lists and tables. Desktop and
+//! web.
 //!
 //! ```ignore
 //! use iced_markdown_editor::{markdown_editor, Action, EditorState, Event};
@@ -40,6 +41,12 @@
 //! |---|---|---|
 //! | `syntect` | off | [`SyntectHighlighter`], a ready-made code highlighter |
 //! | `images` | off | Showing images, and pasting images from the clipboard (desktop) |
+//!
+//! ## Tables
+//!
+//! GFM tables are edited in place: [`Command::InsertTable`], row and column
+//! commands, [`Command::SetColumnAlign`] with [`ColumnAlign`]. `Tab` moves to
+//! the next cell, `Enter` to the cell below.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
@@ -60,7 +67,7 @@ pub mod zoom;
 #[cfg_attr(docsrs, doc(cfg(feature = "syntect")))]
 pub mod syntect;
 
-pub use doc::BlockKind;
+pub use doc::{BlockKind, ColumnAlign};
 pub use fonts::FONTS;
 pub use highlight::{CodeHighlighter, HighlightRequest, HighlightSpan};
 pub use images::{

@@ -3,7 +3,7 @@
 //! All text uses the bundled fonts explicitly, so labels render even where
 //! no system fonts exist (the browser).
 
-use crate::doc::BlockKind;
+use crate::doc::{BlockKind, ColumnAlign};
 use crate::fonts;
 use crate::style::Palette;
 use crate::widget::{Action, Command, Formatting, Mode};
@@ -239,6 +239,66 @@ pub(crate) fn view(
 
     bar = bar
         .push(tool(p, "\u{2015}", ui, false, Some(Command::InsertRule)))
+        .push(tool(
+            p,
+            "Table",
+            ui,
+            visual && format.table,
+            (!format.table).then_some(Command::InsertTable {
+                rows: 3,
+                columns: 3,
+            }),
+        ));
+
+    if visual && format.table {
+        let align = format.column_align.unwrap_or_default();
+        bar = bar
+            .push(tool(
+                p,
+                "+ Row",
+                ui,
+                false,
+                Some(Command::InsertRow { below: true }),
+            ))
+            .push(tool(
+                p,
+                "+ Col",
+                ui,
+                false,
+                Some(Command::InsertColumn { right: true }),
+            ))
+            .push(tool(p, "\u{2212} Row", ui, false, Some(Command::DeleteRow)))
+            .push(tool(
+                p,
+                "\u{2212} Col",
+                ui,
+                false,
+                Some(Command::DeleteColumn),
+            ))
+            .push(tool(
+                p,
+                "\u{21E4}",
+                ui,
+                align == ColumnAlign::Left,
+                Some(Command::SetColumnAlign(ColumnAlign::Left)),
+            ))
+            .push(tool(
+                p,
+                "\u{2194}",
+                ui,
+                align == ColumnAlign::Center,
+                Some(Command::SetColumnAlign(ColumnAlign::Center)),
+            ))
+            .push(tool(
+                p,
+                "\u{21E5}",
+                ui,
+                align == ColumnAlign::Right,
+                Some(Command::SetColumnAlign(ColumnAlign::Right)),
+            ));
+    }
+
+    bar = bar
         .push(separator(p))
         .push(tool(
             p,

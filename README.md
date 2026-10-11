@@ -1,11 +1,12 @@
 # iced-markdown-editor
 
 A Word-style WYSIWYG **CommonMark** editor widget for [iced](https://iced.rs) 0.14,
-with the GFM extensions strikethrough and task lists. Desktop and web.
+with the GFM extensions strikethrough, task lists and tables. Desktop and web.
 
 - Pages like a word processor (A4, Letter, custom sizes, margins) or full width
 - Formatting toolbar, keyboard shortcuts, Word-style autoformat
 - Nested lists, task lists with clickable checkboxes, block quotes, code blocks
+- Tables with column alignment; Tab and Enter move between cells
 - WYSIWYG and Markdown source mode on the same pages
 - Zoom, undo / redo, clipboard
 - Optional syntax highlighting (`syntect`) and images (`images`)
