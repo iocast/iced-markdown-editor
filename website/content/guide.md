@@ -6,7 +6,7 @@ template = "page.html"
 ```toml
 [dependencies]
 iced = "0.14"
-iced-markdown-editor = { version = "0.17", features = ["syntect", "images"] }
+iced-markdown-editor = { version = "0.2.6", features = ["syntect", "images"] }
 ```
 
 1. Register the bundled fonts: `for font in FONTS { app = app.font(font); }`
