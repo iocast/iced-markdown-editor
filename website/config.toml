@@ -8,4 +8,4 @@ build_search_index = false
 repository = "https://github.com/iocast/iced-markdown-editor"
 crate = "https://crates.io/crates/iced-markdown-editor"
 docs = "https://docs.rs/iced-markdown-editor"
-version = "0.2.5"
+version = "latest"

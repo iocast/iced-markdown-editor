@@ -3,7 +3,7 @@
 ```toml
 [dependencies]
 iced = "0.14"
-iced-markdown-editor = "0.2.5"
+iced-markdown-editor = "0.3"
 ```
 
 1. Register the bundled fonts on the application: `for font in FONTS { app = app.font(font); }`.

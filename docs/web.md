@@ -9,7 +9,7 @@ Your web app:
 ```toml
 [dependencies]
 iced = "0.14"
-iced-markdown-editor = { version = "0.2.5", features = ["images"] }
+iced-markdown-editor = { version = "0.3", features = ["images"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 iced = { version = "0.14", features = ["webgl"] }

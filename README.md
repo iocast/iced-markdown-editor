@@ -15,7 +15,7 @@ with the GFM extensions strikethrough, task lists and tables. Desktop and web.
 ```toml
 [dependencies]
 iced = "0.14"
-iced-markdown-editor = { version = "0.17", features = ["syntect", "images"] }
+iced-markdown-editor = { version = "0.3", features = ["syntect", "images"] }
 ```
 
 ```rust
