@@ -5,11 +5,15 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-11
+
 ### Added
 - GFM tables: import and export with column alignment (also inside lists and block quotes), shown with borders and a shaded header row
 - Table editing: `Command::InsertTable`, `InsertRow`, `InsertColumn`, `DeleteRow`, `DeleteColumn`, `DeleteTable` and `SetColumnAlign` (new `ColumnAlign` type), with toolbar buttons
 - In a table `Tab` / `Shift+Tab` move between cells (adding a row after the last cell) and `Enter` moves to the cell below; typing `| a | b |` and pressing `Enter` creates a table
 - `Formatting::table` and `Formatting::column_align`
+- `Features` (`EditorState::features`, `set_features`) switches tables, task lists and strikethrough on or off at runtime; `Features::COMMONMARK` gives plain CommonMark, and `Features::allows` helps hide commands in a custom toolbar
+- `BlockRenderer` trait (`EditorState::block_renderer`, `extension` module) draws fenced code blocks of chosen languages, e.g. formulas or diagrams, while the caret is elsewhere; the Markdown is unchanged
 
 ## [0.2.6] - 2026-10-10
 
@@ -27,5 +31,6 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 - Examples: `editor`, `minimal`, `images_folder`, `images_embed`, `images_upload`, `images_insert`
 - Minimum Rust version 1.88
 
-[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.2.6...HEAD
+[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/iocast/iced-markdown-editor/compare/v0.2.6...v0.3.0
 [0.2.6]: https://github.com/iocast/iced-markdown-editor/releases/tag/v0.2.6
