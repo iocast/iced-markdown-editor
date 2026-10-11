@@ -21,26 +21,26 @@ syntect = ["dep:syntect"]
 images = ["dep:arboard", "dep:png", "dep:imagesize", "iced/image"]
 
 [dependencies]
-iced = { version = "0.14.0", features = ["canvas"] }
-ab_glyph = "0.2.32"
-pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+iced = { version = "^0.14", features = ["canvas"] }
+ab_glyph = "^0.2"
+pulldown-cmark = { version = "^0.13", default-features = false, features = ["html"] }
 # Instant / SystemTime that also work in the browser.
-web-time = "1.1.0"
+web-time = "^1.1"
 # Pure-Rust regex engine: no Oniguruma C library needed.
-syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"], optional = true }
-imagesize = { version = "0.15.0", optional = true }
+syntect = { version = "^5.3", default-features = false, features = ["default-fancy"], optional = true }
+imagesize = { version = "^0.15", optional = true }
 
 # Desktop only.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-iced = { version = "0.14.0", features = ["tokio"] }
-arboard = { version = "3.6.1", optional = true }
-png = { version = "0.18.1", optional = true }
+iced = { version = "^0.14", features = ["tokio"] }
+arboard = { version = "^3.6", optional = true }
+png = { version = "^0.18", optional = true }
 
 [dev-dependencies]
-rfd = "0.17.2"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-tokio = { version = "1.53.2", features = ["time"] }
+rfd = "^0.17"
+serde = { version = "^1.0", features = ["derive"] }
+serde_json = "^1.0"
+tokio = { version = "^1.53", features = ["time"] }
 
 [[example]]
 name = "editor"
