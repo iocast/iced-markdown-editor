@@ -8,20 +8,28 @@
 //!   [`EditorState::update`], which returns an [`Output`] with a [`Task`]
 //!   and the [`Event`]s that happened.
 //! * [`EditorState::execute`] runs a [`Command`] programmatically.
+//!
+//! * `edit`: keyboard, mouse and commands.
+//! * `source`: Markdown source mode.
+//! * `view`: the widget (page canvas, link bar, status bar).
+//! * `toolbar`: the built-in toolbar.
 
 mod edit;
 mod source;
+mod toolbar;
 mod view;
 
 pub use view::{MarkdownEditor, markdown_editor};
 
 use crate::doc::{Block, BlockKind, ColumnAlign, Container, Document, Leaf, Pos, Selection, Style};
+use crate::extension::{BlockRenderer, Frame, Rectangle, RenderRequest};
+use crate::features::Features;
 use crate::fonts::Fonts;
 use crate::highlight::{self, COMMON_LANGUAGES, CodeHighlighter, HighlightRequest};
 use crate::images::{
     self, ImageCache, ImageId, ImageLoader, ImageRejection, ImageSettings, ImageSource, PastedImage,
 };
-use crate::layout::{Layout, compute as compute_layout};
+use crate::layout::{Layout, Lookups, compute as compute_layout};
 use crate::markdown;
 use crate::page::Paper;
 use crate::style::EditorStyle;
@@ -283,6 +291,12 @@ pub struct EditorState {
     pub(crate) tab_width: usize,
     pub(crate) highlighter: Option<Arc<dyn CodeHighlighter>>,
     pub(crate) highlight_cache: RefCell<HashMap<u64, Arc<Vec<Color>>>>,
+    pub(crate) features: Features,
+    pub(crate) renderers: Vec<Arc<dyn BlockRenderer>>,
+    /// Language -> index in `renderers`.
+    pub(crate) renderer_languages: HashMap<String, usize>,
+    /// Measured sizes of rendered blocks.
+    pub(crate) render_cache: RefCell<HashMap<u64, Option<Size>>>,
     pub(crate) image_settings: ImageSettings,
     pub(crate) image_base: Option<PathBuf>,
     pub(crate) image_loader: Option<ImageLoader>,
@@ -323,7 +337,8 @@ impl EditorState {
         Self::with_markdown("")
     }
 
-    /// A document parsed from CommonMark (with GFM strikethrough and task lists).
+    /// A document parsed from CommonMark (with the GFM extensions
+    /// strikethrough, task lists and tables; see [`Self::features`]).
     pub fn with_markdown(markdown_text: &str) -> Self {
         let state = Self {
             doc: markdown::parse(markdown_text),
@@ -338,6 +353,10 @@ impl EditorState {
             tab_width: DEFAULT_TAB_WIDTH,
             highlighter: None,
             highlight_cache: RefCell::new(HashMap::new()),
+            features: Features::default(),
+            renderers: Vec::new(),
+            renderer_languages: HashMap::new(),
+            render_cache: RefCell::new(HashMap::new()),
             image_settings: ImageSettings::default(),
             image_base: None,
             image_loader: None,
@@ -401,6 +420,22 @@ impl EditorState {
     /// Builder: installs a code highlighting plugin.
     pub fn highlighter(mut self, highlighter: impl CodeHighlighter) -> Self {
         self.set_highlighter(Some(Arc::new(highlighter)));
+        self
+    }
+
+    /// Builder: enables or disables optional Markdown features. The document
+    /// is read again with the new features.
+    pub fn features(mut self, features: Features) -> Self {
+        self.set_features(features);
+        self
+    }
+
+    /// Builder: adds a renderer for fenced code blocks of some languages.
+    /// Call it once per renderer; the first one listing a language wins.
+    pub fn block_renderer(mut self, renderer: impl BlockRenderer) -> Self {
+        let mut renderers = self.renderers.clone();
+        renderers.push(Arc::new(renderer));
+        self.set_block_renderers(renderers);
         self
     }
 
@@ -500,21 +535,40 @@ impl EditorState {
         self.highlighter.is_some()
     }
 
-    /// Languages offered for code blocks.
+    pub fn current_features(&self) -> Features {
+        self.features
+    }
+
+    /// Languages drawn by block renderers.
+    pub fn rendered_languages(&self) -> Vec<String> {
+        self.renderers
+            .iter()
+            .flat_map(|renderer| renderer.languages())
+            .collect()
+    }
+
+    /// Languages offered for code blocks: from the highlighter (or a common
+    /// list) and the block renderers.
     pub fn code_languages(&self) -> Vec<String> {
         let languages = self
             .highlighter
             .as_ref()
             .map(|highlighter| highlighter.languages())
             .unwrap_or_default();
-        if languages.is_empty() {
+        let mut languages: Vec<String> = if languages.is_empty() {
             COMMON_LANGUAGES
                 .iter()
                 .map(|name| name.to_string())
                 .collect()
         } else {
             languages
+        };
+        for language in self.rendered_languages() {
+            if !languages.contains(&language) {
+                languages.push(language);
+            }
         }
+        languages
     }
 
     /// `(checked, total)` task list items.
@@ -626,7 +680,7 @@ impl EditorState {
     /// dirty flag.
     pub fn set_markdown(&mut self, markdown_text: &str) {
         self.doc = match self.mode {
-            Mode::Wysiwyg => markdown::parse(markdown_text),
+            Mode::Wysiwyg => markdown::parse_with(markdown_text, self.features),
             Mode::Source => source::document(&self.embedded.shorten(markdown_text)),
         };
         self.sel = Selection::caret(Pos::new(0, 0));
@@ -682,6 +736,43 @@ impl EditorState {
         self.relayout();
     }
 
+    /// Enables or disables optional Markdown features. In WYSIWYG mode the
+    /// document is read again, as if it had been loaded with the new
+    /// features; the undo history starts again.
+    pub fn set_features(&mut self, features: Features) {
+        if features == self.features {
+            return;
+        }
+        self.features = features;
+        if self.mode == Mode::Wysiwyg {
+            let text = markdown::serialize(&self.doc);
+            self.doc = markdown::parse_with(&text, features);
+            self.sel = Selection {
+                anchor: self.doc.clamp(self.sel.anchor),
+                head: self.doc.clamp(self.sel.head),
+            };
+            self.undo.clear();
+            self.redo.clear();
+            self.reset_transient();
+        }
+        self.relayout();
+    }
+
+    /// Replaces the block renderers. The first renderer listing a language
+    /// draws it.
+    pub fn set_block_renderers(&mut self, renderers: Vec<Arc<dyn BlockRenderer>>) {
+        let mut languages = HashMap::new();
+        for (index, renderer) in renderers.iter().enumerate() {
+            for language in renderer.languages() {
+                languages.entry(language).or_insert(index);
+            }
+        }
+        self.renderers = renderers;
+        self.renderer_languages = languages;
+        self.render_cache.borrow_mut().clear();
+        self.relayout();
+    }
+
     pub fn set_image_settings(&mut self, settings: ImageSettings) {
         self.image_settings = settings;
     }
@@ -716,7 +807,7 @@ impl EditorState {
             }
             Mode::Wysiwyg => {
                 let text = self.embedded.expand(&source::text(&self.doc));
-                markdown::parse(&text)
+                markdown::parse_with(&text, self.features)
             }
         };
         self.mode = mode;
@@ -744,6 +835,14 @@ impl EditorState {
         let zoom = self.zoom;
 
         let task = self.apply(action.0);
+
+        // A rendered block shows its code while the caret is in it.
+        if self.sel.head.block != sel.head.block
+            && (self.renderer_for(sel.head.block).is_some()
+                || self.renderer_for(self.sel.head.block).is_some())
+        {
+            self.relayout();
+        }
 
         let mut events = std::mem::take(&mut self.pending_events);
         if self.focused != focused {
@@ -854,11 +953,93 @@ impl EditorState {
         Some(colors)
     }
 
+    /// The block renderer for block `index`, if it is a code block of one
+    /// of its languages (WYSIWYG mode only).
+    pub(crate) fn renderer_for(&self, index: usize) -> Option<&Arc<dyn BlockRenderer>> {
+        if self.mode != Mode::Wysiwyg || self.renderers.is_empty() {
+            return None;
+        }
+        let block = self.doc.blocks.get(index)?;
+        if block.leaf != Leaf::Code {
+            return None;
+        }
+        let renderer = *self.renderer_languages.get(block.language()?)?;
+        self.renderers.get(renderer)
+    }
+
+    /// Size of block `index` drawn by its renderer (cached); `None` while
+    /// the caret is in it or when the renderer declines.
+    fn measure_block(&self, index: usize, width: f32, max_height: f32) -> Option<Size> {
+        if index == self.sel.head.block {
+            return None;
+        }
+        let renderer = self.renderer_for(index)?;
+        let block = &self.doc.blocks[index];
+        let code: String = block.chars.iter().collect();
+
+        let mut hasher = DefaultHasher::new();
+        Arc::as_ptr(renderer).cast::<()>().hash(&mut hasher);
+        block.info.hash(&mut hasher);
+        code.hash(&mut hasher);
+        for value in [width, max_height, self.zoom] {
+            value.to_bits().hash(&mut hasher);
+        }
+        let key = hasher.finish();
+        if let Some(size) = self.render_cache.borrow().get(&key) {
+            return *size;
+        }
+
+        let size = renderer.measure(&RenderRequest {
+            language: block.language().unwrap_or(""),
+            info: block.info.as_deref().unwrap_or(""),
+            code: &code,
+            width,
+            max_height,
+            zoom: self.zoom,
+            style: &self.style,
+        });
+        let mut cache = self.render_cache.borrow_mut();
+        if cache.len() > 512 {
+            cache.clear();
+        }
+        cache.insert(key, size);
+        size
+    }
+
+    /// Draws block `index` with its renderer; `available` is the room it
+    /// was measured for.
+    pub(crate) fn draw_block(
+        &self,
+        frame: &mut Frame,
+        index: usize,
+        bounds: Rectangle,
+        available: Size,
+    ) {
+        let Some(renderer) = self.renderer_for(index) else {
+            return;
+        };
+        let block = &self.doc.blocks[index];
+        let code: String = block.chars.iter().collect();
+        let request = RenderRequest {
+            language: block.language().unwrap_or(""),
+            info: block.info.as_deref().unwrap_or(""),
+            code: &code,
+            width: available.width,
+            max_height: available.height,
+            zoom: self.zoom,
+            style: &self.style,
+        };
+        renderer.draw(frame, bounds, &request);
+    }
+
     pub(crate) fn relayout(&self) {
         let cache = &self.image_cache;
         let base = self.image_base.as_deref();
         let loader = self.image_loader.as_ref();
         let lookup = |url: &str| cache.borrow_mut().get(url, base, loader);
+        let custom = |index: usize, width: f32, max_height: f32| {
+            self.measure_block(index, width, max_height)
+        };
         let layout = compute_layout(
             &self.doc,
             &self.fonts,
@@ -866,7 +1047,10 @@ impl EditorState {
             &self.paper,
             self.viewport.get(),
             self.zoom,
-            &lookup,
+            Lookups {
+                images: &lookup,
+                custom: &custom,
+            },
         );
         *self.layout.borrow_mut() = layout;
         self.cache.borrow_mut().clear();

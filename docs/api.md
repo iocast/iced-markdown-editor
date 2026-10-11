@@ -10,6 +10,8 @@
 | `EditorStyle`, `Palette`, `Typography` | Theming |
 | `ImageSettings`, `PastedImage`, `ImageRejection` | Images |
 | `CodeHighlighter`, `SyntectHighlighter` | Code highlighting |
+| `Features` | Switch tables, task lists, strikethrough on or off (`.features(…)`) |
+| `BlockRenderer`, `RenderRequest` | Draw fenced code blocks of chosen languages, e.g. math or diagrams (`.block_renderer(…)`) |
 | `normalize(&str)` | Markdown as the editor writes it |
 
 Full reference on docs.rs.

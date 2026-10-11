@@ -47,10 +47,23 @@
 //! GFM tables are edited in place: [`Command::InsertTable`], row and column
 //! commands, [`Command::SetColumnAlign`] with [`ColumnAlign`]. `Tab` moves to
 //! the next cell, `Enter` to the cell below.
+//!
+//! ## Switching features off
+//!
+//! Tables, task lists and strikethrough can be disabled at runtime with
+//! [`Features`] ([`EditorState::features`]).
+//!
+//! ## Extensions
+//!
+//! A [`BlockRenderer`] (from your own crate) draws fenced code blocks of
+//! chosen languages, e.g. formulas or diagrams
+//! ([`EditorState::block_renderer`]). A [`CodeHighlighter`] colours code.
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub(crate) mod doc;
+pub mod extension;
+pub mod features;
 pub(crate) mod fonts;
 pub mod highlight;
 pub mod images;
@@ -59,7 +72,6 @@ mod markdown;
 pub mod page;
 mod render;
 pub mod style;
-mod toolbar;
 pub mod widget;
 pub mod zoom;
 
@@ -68,6 +80,8 @@ pub mod zoom;
 pub mod syntect;
 
 pub use doc::{BlockKind, ColumnAlign};
+pub use extension::{BlockRenderer, RenderRequest};
+pub use features::Features;
 pub use fonts::FONTS;
 pub use highlight::{CodeHighlighter, HighlightRequest, HighlightSpan};
 pub use images::{

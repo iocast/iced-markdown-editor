@@ -9,11 +9,14 @@ use crate::layout::{Decor, Layout, face_for};
 use crate::style::Palette;
 use iced::widget::canvas::{Frame, Path, Stroke, Text};
 use iced::widget::text::{LineHeight, Shaping};
-use iced::{Color, Pixels, Point, Size};
+use iced::{Color, Pixels, Point, Rectangle, Size};
 use std::sync::Arc;
 
 /// Per-character colours of a highlighted code block, by block index.
 pub type CodeColors<'a> = &'a dyn Fn(usize) -> Option<Arc<Vec<Color>>>;
+
+/// Draws a block of an extension (block index, area, room it was measured for).
+pub type CustomDraw<'a> = &'a dyn Fn(&mut Frame, usize, Rectangle, Size);
 
 /// Approximate baseline of a line (glyphs are centred in the line box).
 fn baseline(y: f32, line_height: f32, size: f32) -> f32 {
@@ -106,6 +109,7 @@ pub fn draw_document(
     layout: &Layout,
     palette: &Palette,
     code_colors: CodeColors<'_>,
+    custom: CustomDraw<'_>,
     visible: (f32, f32),
 ) {
     let (top, bottom) = visible;
@@ -296,6 +300,20 @@ pub fn draw_document(
                 h,
                 image: loaded,
             } => image(frame, *x, *y, *w, *h, loaded),
+            Decor::Custom {
+                block,
+                x,
+                y,
+                w,
+                h,
+                available,
+            } => {
+                if *y + *h >= top && *y <= bottom {
+                    let bounds = Rectangle::new(Point::new(*x, *y), Size::new(*w, *h));
+                    // Transforms of the renderer stay local.
+                    frame.with_save(|frame| custom(frame, *block, bounds, *available));
+                }
+            }
             Decor::Rect { .. } => {}
         }
     }

@@ -3,10 +3,10 @@
 //! browser too.
 
 use super::edit::builtin_command;
+use super::toolbar::{self, fill};
 use super::{Action, Command, EditorState, Inner, Mode};
 use crate::fonts;
-use crate::toolbar::fill;
-use crate::{render, toolbar};
+use crate::render;
 use iced::keyboard::{self, Key, Modifiers, key::Named};
 use iced::mouse::{self, ScrollDelta};
 use iced::widget::canvas::{self, Canvas, Frame, Geometry};
@@ -284,9 +284,9 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                 if modifiers.command() && !modifiers.alt() {
                     if let Key::Character(c) = key.as_ref() {
                         let c = c.to_lowercase();
-                        if builtin_command(&c, modifiers.shift()).is_none() {
-                            return None;
-                        }
+                        // Shortcuts of disabled features go to the application.
+                        builtin_command(&c, modifiers.shift())
+                            .filter(|command| editor.features.allows(command))?;
                     }
                 }
 
@@ -338,6 +338,9 @@ impl<'a> canvas::Program<Action> for Page<'a> {
         let (sx, sy) = editor.clamped_scroll();
         let palette = editor.style.palette;
         let code_colors = |index: usize| editor.code_colors(index);
+        let custom = |frame: &mut Frame, index: usize, bounds: Rectangle, available: Size| {
+            editor.draw_block(frame, index, bounds, available)
+        };
 
         let content = {
             let layout = editor.layout.borrow();
@@ -351,6 +354,7 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                     &layout,
                     &palette,
                     &code_colors,
+                    &custom,
                     (sy, sy + size.height),
                 );
             })
@@ -499,18 +503,10 @@ impl<'a> MarkdownEditor<'a> {
 
         if self.toolbar {
             content = content.push(
-                container(toolbar::view(
-                    palette,
-                    &state.formatting(),
-                    state.mode,
-                    state.can_undo(),
-                    state.can_redo(),
-                    state.code_languages(),
-                    state.image_settings.enabled(),
-                ))
-                .padding([4, 8])
-                .width(Length::Fill)
-                .style(bar_style),
+                container(toolbar::view(state))
+                    .padding([4, 8])
+                    .width(Length::Fill)
+                    .style(bar_style),
             );
         }
 

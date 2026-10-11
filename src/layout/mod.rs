@@ -3,8 +3,18 @@
 //!
 //! Everything is computed in document coordinates at the current zoom. The
 //! view translates them by the scroll offset.
+//!
+//! * `table`: GFM tables.
+//! * `custom`: code blocks drawn by a [`BlockRenderer`](crate::BlockRenderer).
+//! * `images`: images inside text.
+//! * `hit`: caret geometry and hit-testing.
 
-use crate::doc::{Block, ColumnAlign, Container, Document, Leaf, OBJ, Pos, SOFT, Style};
+mod custom;
+mod hit;
+mod images;
+mod table;
+
+use crate::doc::{Block, Container, Document, Leaf, OBJ, SOFT, Style};
 use crate::fonts::{Face, Fonts};
 use crate::images::LoadedImage;
 use crate::page::Paper;
@@ -12,16 +22,27 @@ use crate::style::EditorStyle;
 use iced::{Color, Size};
 use std::collections::HashMap;
 
+use images::{block_images, place_images, row_height};
+
 const CODE_PAD: f32 = 10.0;
 const RULE_HEIGHT: f32 = 26.0;
 const MIN_TEXT_WIDTH: f32 = 80.0;
 const IMAGE_GAP: f32 = 4.0;
-const CELL_PAD_X: f32 = 8.0;
-const CELL_PAD_Y: f32 = 5.0;
 const BULLETS: [&str; 3] = ["\u{2022}", "\u{25E6}", "\u{25AA}"];
 
 /// Looks up a displayable image by URL.
 pub type ImageLookup<'a> = &'a dyn Fn(&str) -> Option<LoadedImage>;
+
+/// Size of a block drawn by an extension: `(block, width, max height)`;
+/// `None` lays the block out as text.
+pub type CustomLookup<'a> = &'a dyn Fn(usize, f32, f32) -> Option<Size>;
+
+/// Content the layout asks the editor for.
+#[derive(Clone, Copy)]
+pub struct Lookups<'a> {
+    pub images: ImageLookup<'a>,
+    pub custom: CustomLookup<'a>,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct BlockMetrics {
@@ -174,6 +195,15 @@ pub enum Decor {
         h: f32,
         image: LoadedImage,
     },
+    /// A block drawn by an extension, with the room it was measured for.
+    Custom {
+        block: usize,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        available: Size,
+    },
 }
 
 /// Clickable checkbox of a task list item.
@@ -298,120 +328,6 @@ fn starts_container(doc: &Document, index: usize, depth: usize) -> bool {
             .is_some_and(|other| other.same(&container))
 }
 
-struct ImageRun {
-    start: usize,
-    end: usize,
-    width: f32,
-    height: f32,
-    image: LoadedImage,
-}
-
-type ImageSizes = Vec<Option<(f32, f32)>>;
-
-fn block_images(
-    block: &Block,
-    images: ImageLookup<'_>,
-    zoom: f32,
-    max_width: f32,
-    max_height: f32,
-) -> (ImageSizes, Vec<ImageRun>) {
-    let len = block.chars.len();
-    let mut sizes = vec![None; len];
-    let mut runs = Vec::new();
-    if block.leaf.is_plain() {
-        return (sizes, runs);
-    }
-    let mut i = 0;
-    while i < len {
-        let Some(link) = block.styles[i].image.clone() else {
-            i += 1;
-            continue;
-        };
-        let mut j = i + 1;
-        while j < len && block.styles[j].image.as_ref() == Some(&link) {
-            j += 1;
-        }
-        if let Some(image) = images(&link.url) {
-            let mut width = image.width * zoom;
-            let mut height = image.height * zoom;
-            let max_width = (max_width - 2.0).max(1.0);
-            if width > max_width {
-                height *= max_width / width;
-                width = max_width;
-            }
-            let max_height = (max_height - 2.0 * IMAGE_GAP * zoom).max(1.0);
-            if height > max_height {
-                width *= max_height / height;
-                height = max_height;
-            }
-            sizes[i] = Some((width, height));
-            for size in &mut sizes[i + 1..j] {
-                *size = Some((0.0, 0.0));
-            }
-            runs.push(ImageRun {
-                start: i,
-                end: j,
-                width,
-                height,
-                image,
-            });
-        }
-        i = j;
-    }
-    (sizes, runs)
-}
-
-/// Height of the visual line `start..end` and the height of its tallest image.
-fn row_height(
-    sizes: &[Option<(f32, f32)>],
-    start: usize,
-    end: usize,
-    m: &BlockMetrics,
-    z: f32,
-) -> (f32, f32) {
-    let image_height = sizes[start..end]
-        .iter()
-        .flatten()
-        .map(|(_, h)| *h)
-        .fold(0.0, f32::max);
-    let height = if image_height > 0.0 {
-        m.line_height.max(image_height + 2.0 * IMAGE_GAP * z)
-    } else {
-        m.line_height
-    };
-    (height, image_height)
-}
-
-/// Images of the visual line `start..end` drawn at `x0` (line start) and
-/// `y`; returns the character ranges they replace.
-fn place_images(
-    layout: &mut Layout,
-    runs: &[ImageRun],
-    (start, end): (usize, usize),
-    xs: &[f32],
-    x0: f32,
-    bottom: f32,
-) -> Vec<(usize, usize)> {
-    let mut ranges = Vec::new();
-    for run in runs {
-        if run.start >= start && run.start < end {
-            layout.decor.push(Decor::Image {
-                x: x0 + xs[run.start - start],
-                y: bottom - run.height,
-                w: run.width,
-                h: run.height,
-                image: run.image.clone(),
-            });
-        }
-        let from = run.start.max(start);
-        let to = run.end.min(end);
-        if from < to {
-            ranges.push((from, to));
-        }
-    }
-    ranges
-}
-
 /// Shared state while laying out the blocks.
 struct Pass<'a> {
     doc: &'a Document,
@@ -509,163 +425,6 @@ impl Pass<'_> {
             level += 1;
         }
     }
-
-    /// The table occupying the blocks `start..end`, `left`..`left + width`.
-    fn table(
-        &mut self,
-        (start, end): (usize, usize),
-        indent: &[f32],
-        left: f32,
-        width: f32,
-        images: ImageLookup<'_>,
-    ) {
-        let doc = self.doc;
-        let p = self.style.palette;
-        let z = self.z;
-        let m = metrics(doc.blocks[start].leaf, self.style, z);
-        let pad_x = CELL_PAD_X * z;
-        let pad_y = CELL_PAD_Y * z;
-        let border = z.max(1.0);
-        let max_image_height = self.flow.usable_height() - m.line_height - 2.0 * pad_y;
-        let rows = doc.table_rows(start, end);
-        let columns = rows.iter().map(|(a, b)| b - a).max().unwrap_or(1);
-
-        // Natural column widths, scaled down when the table is too wide.
-        let mut natural = vec![2.0 * pad_x + m.size; columns];
-        for &(first, last) in &rows {
-            for (column, index) in (first..last).enumerate() {
-                let block = &doc.blocks[index];
-                let (sizes, _) = block_images(block, images, z, width, max_image_height);
-                let text = wrap(block, self.fonts, &m, f32::INFINITY, &sizes)
-                    .iter()
-                    .map(|(_, _, xs)| xs.last().copied().unwrap_or(0.0))
-                    .fold(0.0, f32::max);
-                natural[column] = natural[column].max(text + 2.0 * pad_x + border);
-            }
-        }
-        let total: f32 = natural.iter().sum();
-        let scale = if total > width { width / total } else { 1.0 };
-        let widths: Vec<f32> = natural.iter().map(|w| w * scale).collect();
-        let mut column_x = vec![left];
-        for w in &widths {
-            column_x.push(column_x[column_x.len() - 1] + w);
-        }
-        let table_width = column_x[columns] - left;
-        let mut previous_page = None;
-
-        for (r, &(first, last)) in rows.iter().enumerate() {
-            let mut cells = Vec::new();
-            let mut content = m.line_height;
-            for (column, index) in (first..last).enumerate() {
-                let block = &doc.blocks[index];
-                let inner = (widths[column] - 2.0 * pad_x).max(1.0);
-                let (sizes, runs) = block_images(block, images, z, inner, max_image_height);
-                let lines: Vec<(Row, f32)> = wrap(block, self.fonts, &m, inner, &sizes)
-                    .into_iter()
-                    .map(|row| {
-                        let height = row_height(&sizes, row.0, row.1, &m, z).0;
-                        (row, height)
-                    })
-                    .collect();
-                content = content.max(lines.iter().map(|(_, h)| h).sum());
-                cells.push((index, column, lines, runs));
-            }
-
-            let row_height = content + 2.0 * pad_y;
-            self.flow.fit(row_height);
-            let top = self.flow.y;
-            let bottom = top + row_height;
-
-            if doc.blocks[first].cell().is_some_and(|cell| cell.header) {
-                self.layout.decor.push(Decor::Rect {
-                    x: left,
-                    y: top,
-                    w: table_width,
-                    h: row_height,
-                    color: p.code_background,
-                });
-            }
-            // The top line once per page; rows below share the line above.
-            let lines = if r == 0 || previous_page != Some(self.flow.page) {
-                &[top, bottom - border][..]
-            } else {
-                &[bottom - border][..]
-            };
-            previous_page = Some(self.flow.page);
-            for y in lines {
-                self.layout.decor.push(Decor::Rect {
-                    x: left,
-                    y: *y,
-                    w: table_width,
-                    h: border,
-                    color: p.rule,
-                });
-            }
-            for (column, x) in column_x.iter().enumerate() {
-                self.layout.decor.push(Decor::Rect {
-                    x: if column == columns { x - border } else { *x },
-                    y: top,
-                    w: border,
-                    h: row_height,
-                    color: p.rule,
-                });
-            }
-            self.quote_bars(&doc.blocks[first], indent, r == 0, top, bottom);
-            if r == 0 {
-                self.markers(start, indent, &m, top + pad_y);
-            }
-
-            for (index, column, lines, runs) in cells {
-                let align = doc.blocks[index]
-                    .cell()
-                    .map(|cell| cell.align)
-                    .unwrap_or_default();
-                let inner = widths[column] - 2.0 * pad_x;
-                let count = lines.len();
-                let mut y = top + pad_y;
-                for (k, ((line_start, line_end, xs), height)) in lines.into_iter().enumerate() {
-                    let used = xs.last().copied().unwrap_or(0.0);
-                    let shift = match align {
-                        ColumnAlign::Center => ((inner - used) / 2.0).max(0.0),
-                        ColumnAlign::Right => (inner - used).max(0.0),
-                        ColumnAlign::None | ColumnAlign::Left => 0.0,
-                    };
-                    let x0 = column_x[column] + pad_x + shift;
-                    let line_images = place_images(
-                        &mut self.layout,
-                        &runs,
-                        (line_start, line_end),
-                        &xs,
-                        x0,
-                        y + height - IMAGE_GAP * z,
-                    );
-                    self.layout.lines.push(Line {
-                        block: index,
-                        start: line_start,
-                        end: line_end,
-                        xs: xs.into_iter().map(|x| x + x0).collect(),
-                        y,
-                        height,
-                        size: m.size,
-                        color: m.color,
-                        last: k + 1 == count,
-                        page: self.flow.page,
-                        images: line_images,
-                        cell: Some(CellBox {
-                            row: self.rows,
-                            x: column_x[column],
-                            width: widths[column],
-                            top,
-                            bottom,
-                        }),
-                    });
-                    y += height;
-                }
-            }
-            self.rows += 1;
-            self.flow.y = bottom;
-        }
-    }
 }
 
 pub fn compute(
@@ -675,8 +434,9 @@ pub fn compute(
     paper: &Paper,
     viewport: Size,
     zoom: f32,
-    images: ImageLookup<'_>,
+    lookups: Lookups<'_>,
 ) -> Layout {
+    let images = lookups.images;
     let t = &style.typography;
     let p = &style.palette;
     let z = zoom.max(0.05);
@@ -780,6 +540,16 @@ pub fn compute(
             pass.table(table, &indent, left, width, images);
             pass.flow.y += space_after;
             index = end;
+            continue;
+        }
+
+        if block.leaf == Leaf::Code
+            && let Some(size) = (lookups.custom)(index, width, pass.flow.usable_height())
+        {
+            let available = Size::new(width, pass.flow.usable_height());
+            pass.custom(index, &indent, left, available, size);
+            pass.flow.y += space_after;
+            index += 1;
             continue;
         }
 
@@ -985,167 +755,4 @@ fn wrap(
 
     rows.push((start, len, xs));
     rows
-}
-
-impl Layout {
-    /// Index of the line that displays `pos`.
-    pub fn line_for(&self, pos: Pos) -> Option<usize> {
-        let mut fallback = None;
-        for (index, line) in self.lines.iter().enumerate() {
-            if line.block == pos.block {
-                if pos.offset >= line.start && (pos.offset < line.end || line.last) {
-                    return Some(index);
-                }
-                fallback = Some(index);
-            } else if line.block > pos.block {
-                break;
-            }
-        }
-        fallback
-    }
-
-    /// Caret geometry `(x, y, height)`.
-    pub fn caret(&self, pos: Pos) -> Option<(f32, f32, f32)> {
-        let line = &self.lines[self.line_for(pos)?];
-        let k = pos.offset.saturating_sub(line.start).min(line.xs.len() - 1);
-        Some((line.xs[k], line.y, line.height))
-    }
-
-    /// Page (0-based) that shows `pos`.
-    pub fn page_of(&self, pos: Pos) -> usize {
-        self.line_for(pos)
-            .map(|index| self.lines[index].page)
-            .unwrap_or(0)
-    }
-
-    /// The task checkbox at a point, if any.
-    pub fn task_at(&self, x: f32, y: f32) -> Option<TaskBox> {
-        self.tasks.iter().copied().find(|task| task.contains(x, y))
-    }
-
-    /// Position closest to `x` on the given line.
-    pub fn hit_line(&self, index: usize, x: f32) -> Pos {
-        let line = &self.lines[index];
-        let len = line.end - line.start;
-        let max = if line.last || len == 0 { len } else { len - 1 };
-        let mut best = 0;
-        let mut best_distance = f32::INFINITY;
-        for k in 0..=max {
-            let distance = (line.xs[k] - x).abs();
-            if distance < best_distance {
-                best_distance = distance;
-                best = k;
-            }
-        }
-        Pos::new(line.block, line.start + best)
-    }
-
-    /// Vertical extent of a line, or of the table cell showing it.
-    fn band(&self, index: usize) -> (f32, f32) {
-        let line = &self.lines[index];
-        match line.cell {
-            Some(cell) => (cell.top, cell.bottom),
-            None => (line.y, line.y + line.height),
-        }
-    }
-
-    /// First and last line of the cell closest to `x`, in the table row
-    /// of line `index`.
-    fn cell_lines(&self, index: usize, x: f32) -> (usize, usize) {
-        let Some(row) = self.lines[index].cell.map(|cell| cell.row) else {
-            return (index, index);
-        };
-        let in_row = |i: usize| self.lines[i].cell.is_some_and(|cell| cell.row == row);
-        let mut first = index;
-        while first > 0 && in_row(first - 1) {
-            first -= 1;
-        }
-        let mut end = index + 1;
-        while end < self.lines.len() && in_row(end) {
-            end += 1;
-        }
-        let distance = |i: usize| self.lines[i].cell.map_or(f32::INFINITY, |c| c.distance(x));
-        let best = (first..end)
-            .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
-            .unwrap_or(index);
-        let block = self.lines[best].block;
-        let start = (first..end)
-            .find(|i| self.lines[*i].block == block)
-            .unwrap_or(best);
-        let last = (first..end)
-            .rev()
-            .find(|i| self.lines[*i].block == block)
-            .unwrap_or(best);
-        (start, last)
-    }
-
-    /// Position closest to a point.
-    pub fn hit(&self, x: f32, y: f32) -> Pos {
-        if self.lines.is_empty() {
-            return Pos::default();
-        }
-        let mut index = self.lines.len() - 1;
-        for i in 0..self.lines.len() {
-            if y < self.band(i).1 {
-                index = i;
-                break;
-            }
-        }
-        if self.lines[index].cell.is_some() {
-            let (first, last) = self.cell_lines(index, x);
-            index = (first..=last)
-                .find(|i| y < self.lines[*i].y + self.lines[*i].height)
-                .unwrap_or(last);
-        }
-        self.hit_line(index, x)
-    }
-
-    /// The line above or below line `index`; in tables the line of the
-    /// cell above or below, closest to `x`.
-    fn step(&self, index: usize, x: f32, down: bool) -> Option<usize> {
-        let line = &self.lines[index];
-        let count = self.lines.len();
-        if down {
-            if line.cell.is_some() && index + 1 < count && self.lines[index + 1].block == line.block
-            {
-                return Some(index + 1);
-            }
-            let bottom = self.band(index).1;
-            let next = (index + 1..count).find(|i| self.band(*i).0 >= bottom - 0.5)?;
-            Some(self.cell_lines(next, x).0)
-        } else {
-            if line.cell.is_some() && index > 0 && self.lines[index - 1].block == line.block {
-                return Some(index - 1);
-            }
-            let top = self.band(index).0;
-            let previous = (0..index).rev().find(|i| self.band(*i).1 <= top + 0.5)?;
-            Some(self.cell_lines(previous, x).1)
-        }
-    }
-
-    /// Moves `delta` lines up (negative) or down, keeping `goal_x`.
-    pub fn vertical(&self, pos: Pos, goal_x: f32, delta: i32) -> Option<Pos> {
-        let mut index = self.line_for(pos)?;
-        for _ in 0..delta.unsigned_abs() {
-            match self.step(index, goal_x, delta > 0) {
-                Some(next) => index = next,
-                None => break,
-            }
-        }
-        Some(self.hit_line(index, goal_x))
-    }
-
-    pub fn line_start(&self, pos: Pos) -> Pos {
-        match self.line_for(pos) {
-            Some(index) => Pos::new(pos.block, self.lines[index].start),
-            None => pos,
-        }
-    }
-
-    pub fn line_end(&self, pos: Pos) -> Pos {
-        match self.line_for(pos) {
-            Some(index) => self.hit_line(index, 1.0e9),
-            None => pos,
-        }
-    }
 }

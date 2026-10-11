@@ -67,9 +67,20 @@ Type `| a | b |` and press **Enter** to start a table.
 ## Code
 
 ```rust
-fn parse(line: &str) -> Option<Task> {
-    let done = line.starts_with("x ");
-    Some(Task { done, text: line.to_string() })
+use iced_markdown_editor::{Action, EditorState, markdown_editor};
+
+struct App {
+    editor: EditorState,
+}
+
+impl App {
+    fn update(&mut self, action: Action) -> Task<Action> {
+        self.editor.update(action).task
+    }
+
+    fn view(&self) -> Element<'_, Action> {
+        markdown_editor(&self.editor).view()
+    }
 }
 ```
 "#;

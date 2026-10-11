@@ -3,10 +3,10 @@
 //! All text uses the bundled fonts explicitly, so labels render even where
 //! no system fonts exist (the browser).
 
+use super::{Action, Command, EditorState, Formatting, Mode};
 use crate::doc::{BlockKind, ColumnAlign};
 use crate::fonts;
 use crate::style::Palette;
-use crate::widget::{Action, Command, Formatting, Mode};
 use iced::widget::{button, pick_list, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length};
 
@@ -103,19 +103,14 @@ fn language_list(format: &Formatting, languages: Vec<String>) -> Element<'static
     .into()
 }
 
-pub(crate) fn view(
-    palette: Palette,
-    format: &Formatting,
-    mode: Mode,
-    can_undo: bool,
-    can_redo: bool,
-    languages: Vec<String>,
-    images: bool,
-) -> Element<'static, Action> {
-    let visual = mode == Mode::Wysiwyg;
+pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
+    let format = &state.formatting();
+    let features = state.features;
+    let (can_undo, can_redo) = (state.can_undo(), state.can_redo());
+    let visual = state.mode == Mode::Wysiwyg;
     let block = format.block;
     let ui = fonts::SANS;
-    let p = palette;
+    let p = state.style.palette;
     let task = format.task.is_some();
     let set = |kind| Some(Command::SetBlock(kind));
 
@@ -168,13 +163,6 @@ pub(crate) fn view(
         ),
         tool(
             p,
-            "S",
-            ui,
-            visual && format.strike,
-            Some(Command::ToggleStrike)
-        ),
-        tool(
-            p,
             "</>",
             fonts::MONO,
             visual && format.code,
@@ -191,7 +179,17 @@ pub(crate) fn view(
     .spacing(2)
     .align_y(Alignment::Center);
 
-    if images {
+    if features.strikethrough {
+        bar = bar.push(tool(
+            p,
+            "S",
+            ui,
+            visual && format.strike,
+            Some(Command::ToggleStrike),
+        ));
+    }
+
+    if state.image_settings.enabled() {
         bar = bar.push(tool(p, "Image", ui, false, Some(Command::RequestImage)));
     }
 
@@ -210,14 +208,19 @@ pub(crate) fn view(
             ui,
             visual && !task && format.list == Some(true),
             set(BlockKind::Ordered),
-        ))
-        .push(tool(
+        ));
+
+    if features.task_lists {
+        bar = bar.push(tool(
             p,
             "\u{2611} \u{2014}",
             ui,
             visual && task,
             set(BlockKind::Task),
-        ))
+        ));
+    }
+
+    bar = bar
         .push(tool(
             p,
             "\u{201C} \u{201D}",
@@ -234,12 +237,13 @@ pub(crate) fn view(
         ));
 
     if visual && block == BlockKind::Code {
-        bar = bar.push(language_list(format, languages));
+        bar = bar.push(language_list(format, state.code_languages()));
     }
 
-    bar = bar
-        .push(tool(p, "\u{2015}", ui, false, Some(Command::InsertRule)))
-        .push(tool(
+    bar = bar.push(tool(p, "\u{2015}", ui, false, Some(Command::InsertRule)));
+
+    if features.tables {
+        bar = bar.push(tool(
             p,
             "Table",
             ui,
@@ -249,8 +253,9 @@ pub(crate) fn view(
                 columns: 3,
             }),
         ));
+    }
 
-    if visual && format.table {
+    if visual && format.table && features.tables {
         let align = format.column_align.unwrap_or_default();
         bar = bar
             .push(tool(
