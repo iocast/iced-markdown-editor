@@ -8,7 +8,7 @@ allowed-tools: Read, Edit, Write, Grep, Glob, Bash(git log:*), Bash(git diff:*),
 
 This project releases with `scripts/release.ps1`, which reads `CHANGELOG.md`:
 
-- The tag message and the GitLab release text are copied from the changelog, so every entry becomes published release notes.
+- The tag message is copied from the changelog, and `CHANGELOG.md` ships in the crate on crates.io, so every entry becomes published release notes. There is no GitHub release.
 - Without an explicit argument, the script picks patch or minor from the section headings you use. A wrong heading means a wrong version. The major number only changes when the user runs `new major`.
 
 Accuracy and correct classification matter more than listing every commit.
@@ -41,10 +41,10 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 ### Fixed
 ```
 
-Find the latest real release. Release candidates (`-rc.N`) do not count, because their notes are still in `[Unreleased]`:
+Find the latest tag. Release candidates (`-rc.N`) count: each has its own `[X.Y.Z-rc.N]` section, so `[Unreleased]` only holds what came after it (the final release later collects the candidates' entries itself):
 
 ```bash
-git describe --tags --abbrev=0 --match "v*" --exclude "*-rc.*"
+git describe --tags --abbrev=0 --match "v*"
 ```
 
 If this fails, there is no release yet. In that case, treat the whole history as unreleased and focus on the most recent work.
@@ -65,16 +65,16 @@ Include uncommitted changes (`git diff HEAD`) only when the user is documenting 
 
 ### 3. Decide what belongs in the changelog
 
-The readers are people who deploy, operate, or use this service. Include what they notice:
+The readers are developers who use this crate in their iced apps, and the people using those apps. Include what they notice:
 
-- new features, endpoints, CLI flags
-- changed behavior, defaults, response formats
-- new, renamed, or removed configuration: environment variables, config keys, Helm values, ports, volumes
-- database migrations or other steps needed during deployment
+- new public API: types, methods, `Command` variants, settings, Cargo features
+- changed behavior or defaults of the editor (editing, keyboard, layout, Markdown import and export)
+- changed, renamed, or removed public API, and what to use instead
 - bug fixes for bugs that existed in a released version
-- security fixes, including dependency or base-image updates made for security reasons
+- a new minimum Rust version, or a new `iced` version or other dependency that users must match
+- security fixes, including dependency updates made for security reasons
 
-Leave out purely internal work: refactoring without behavior change, tests, formatting, CI tweaks, internal docs. The exception is internal work that affects building or deploying, such as a new required build argument or a changed image base.
+Leave out purely internal work: refactoring without behavior change, tests, formatting, CI tweaks, internal docs, examples and the website. The exception is internal work that affects building the crate, such as a new required system library.
 
 **Same-cycle rule:** if a bug was introduced and fixed within the current `[Unreleased]` cycle, nobody outside ever saw it. Do not add a `Fixed` entry for it. Adjust the original `Added` or `Changed` entry instead, if needed.
 
@@ -122,7 +122,7 @@ After editing, show the user:
 1. The resulting `[Unreleased]` section.
 2. The predicted next version: the latest release tag plus the highest effect from the table above. Example: `v1.3.0 -> v1.3.1 (only fixes)`. If there are breaking changes or removals, say so and mention that `new major` is needed for a new major version.
 3. The changes you deliberately left out, briefly, so the user can ask to include them.
-4. The next step: `.\scripts\release.ps1 rc` for a test build or `.\scripts\release.ps1 new` for the release. Add `patch`, `minor` or `major` to choose the number explicitly.
+4. The next step: `.\scripts\release.ps1 rc` for a release candidate (a pre-release with its own changelog section) or `.\scripts\release.ps1 new` for the release. Add `patch`, `minor` or `major` to choose the number explicitly.
 
 ## Example
 

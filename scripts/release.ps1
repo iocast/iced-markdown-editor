@@ -4,21 +4,24 @@
   and Cargo.toml.
 
 .DESCRIPTION
-  Run from anywhere inside the repo. The tag message and the GitHub Release body both come from
-  CHANGELOG.md - the "changelog" skill is responsible for writing the actual entries into
-  [Unreleased]; this script only promotes that section to a dated version, keeps Cargo.toml's
-  version in sync (the GitHub Actions release workflow aborts the build on a mismatch), commits,
-  tags, and pushes.
+  Run from anywhere inside the repo. Pushing a tag vX.Y.Z (or vX.Y.Z-rc.N) starts
+  .github/workflows/publish.yml, which publishes that version to crates.io. No GitHub release is
+  created. The tag message comes from CHANGELOG.md - the "changelog" skill is responsible for
+  writing the actual entries into [Unreleased]; this script only promotes that section to a dated
+  version, keeps Cargo.toml's version in sync (the workflow aborts unless the tag matches
+  Cargo.toml's version), commits, tags, and pushes.
 
   Commands
     list       Show the latest tags
-    rc         Test build: tags vX.Y.Z-rc.N with the notes from [Unreleased]. Nothing is modified
-               or committed - see the warning it prints about the version-check workflow.
-    new        Release: renames [Unreleased] to [X.Y.Z] - <date>, syncs Cargo.toml's version,
-               commits CHANGELOG.md/Cargo.toml/Cargo.lock, tags vX.Y.Z, pushes.
-    rollback   Delete a tag locally and on the remote, and try to remove its GitHub Release
-               (default: highest tag)
-    retag      Move a tag to HEAD and force-push it (rebuild the same version)
+    rc         Release candidate: like 'new', but renames [Unreleased] to [X.Y.Z-rc.N] - <date>,
+               sets Cargo.toml to X.Y.Z-rc.N, tags vX.Y.Z-rc.N. Published to crates.io as a
+               pre-release version.
+    new        Release: renames [Unreleased] to [X.Y.Z] - <date> (after candidates: their entries
+               plus [Unreleased]), syncs Cargo.toml's version, commits CHANGELOG.md/Cargo.toml/
+               Cargo.lock, tags vX.Y.Z, pushes.
+    rollback   Delete a tag locally and on the remote (default: highest tag); only useful if
+               the version did not reach crates.io
+    retag      Move a tag to HEAD and force-push it (retry a publish that failed)
     show       Show the message of a tag
     init       Create a CHANGELOG.md skeleton
 
@@ -26,7 +29,8 @@
     1. An explicit version: X.Y.Z
     2. A [X.Y.Z] section in CHANGELOG.md that is newer than the latest release tag (written by hand
        or left over from a rollback)
-    3. Otherwise Cargo.toml's current version is bumped:
+    3. While Cargo.toml is at a candidate X.Y.Z-rc.N: X.Y.Z (the next candidate, or the release)
+    4. Otherwise Cargo.toml's current version is bumped:
          patch   1.3.0 -> 1.3.1    (argument "patch" or -Bump patch)
          minor   1.3.0 -> 1.4.0    (argument "minor" or -Bump minor)
          major   1.3.0 -> 2.0.0    (argument "major" or -Bump major - only when given explicitly)
@@ -76,10 +80,11 @@ $Self = $MyInvocation.InvocationName
 function Show-Help([string]$Topic) {
     $overview = @"
 
-Release helper for iced-markdown-editor - binaries are built by GitHub Actions, release notes come from
-$Changelog (Keep a Changelog + Semantic Versioning). This script does not write changelog
-*content*; use the changelog skill/tool for that. It only promotes [Unreleased] to a dated
-version section, keeps $CargoToml's version in sync, commits, tags, and pushes.
+Release helper for iced-markdown-editor - GitHub Actions publishes each pushed tag to crates.io
+(no GitHub release), release notes come from $Changelog (Keep a Changelog + Semantic
+Versioning). This script does not write changelog *content*; use the changelog skill/tool for
+that. It only promotes [Unreleased] to a dated version section, keeps $CargoToml's version in
+sync, commits, tags, and pushes.
 
 USAGE
   $Self <command> [version] [options]
@@ -87,11 +92,10 @@ USAGE
 
 COMMANDS
   list                 Show the latest 15 tags (default)
-  rc   [version]       Test build: tag vX.Y.Z-rc.N, notes from [Unreleased], nothing committed
+  rc   [version]       Candidate: [Unreleased] -> [X.Y.Z-rc.N], sync Cargo.toml, commit, tag, push
   new  [version]       Release: [Unreleased] -> [X.Y.Z], sync Cargo.toml, commit, tag vX.Y.Z, push
-  rollback [tag]       Delete a tag locally + on the remote, try to remove its GitHub Release
-                       (default: highest tag)
-  retag    [tag]       Move a tag to HEAD and force-push it -> rebuild same version
+  rollback [tag]       Delete a tag locally + on the remote (default: highest tag)
+  retag    [tag]       Move a tag to HEAD and force-push it -> retry a failed publish
   show     [tag]       Show message and commit of a tag (default: highest tag)
   init                 Create a CHANGELOG.md skeleton
   help                 Show this help
@@ -112,11 +116,11 @@ OPTIONS
   -h, -Help                      Show help
 
 EXAMPLES (latest release v1.2.3)
-  $Self rc                   test build  -> v1.3.0-rc.1
+  $Self rc                   candidate   -> v1.3.0-rc.1, then rc.2, ...; new -> v1.3.0
   $Self new                  release     -> v1.3.0
   $Self new patch            release     -> v1.2.4   (only last number)
   $Self new minor            release     -> v1.3.0   (second last number)
-  $Self rc minor             test build  -> v1.3.0-rc.1
+  $Self rc minor             candidate   -> v1.3.0-rc.1
   $Self rollback v1.3.0-rc.1
   $Self retag -Yes
 
@@ -132,15 +136,18 @@ list
         'rc' = @"
 
 rc [patch|minor|major|X.Y.Z] [-Yes]
-  Creates the next release candidate tag vX.Y.Z-rc.N and pushes it.
-  - Version is chosen like for 'new'; N counts up per version (rc.1, rc.2, ...).
-  - Tag message = [Unreleased] section (or [X.Y.Z] if it exists). Empty is allowed.
-  - $Changelog and $CargoToml are NOT modified, nothing is committed.
-  - The GitHub Actions release workflow aborts the build unless the pushed tag's version
-    matches $CargoToml's version and $Changelog's top section exactly (rc suffix included).
-    Since this command changes neither file, the pipeline will usually fail its version check -
-    this is only useful to sanity-check the tag/push mechanics, not to run a real test build.
-    Use 'new' for a build that actually passes CI.
+  Creates the next release candidate vX.Y.Z-rc.N. It is published to crates.io like a release,
+  so it is recorded like one:
+  - Version is chosen like for 'new' (while Cargo.toml is at X.Y.Z-rc.N: X.Y.Z again);
+    N counts up per version (rc.1, rc.2, ...).
+  - Renames [Unreleased] to [X.Y.Z-rc.N] - <today> (or uses that section if it is left over
+    from a rollback), sets $CargoToml to X.Y.Z-rc.N, commits "Release vX.Y.Z-rc.N", pushes,
+    tags with the section as message and pushes the tag.
+  - Fails if the section has no entries: each candidate lists what changed since the last.
+  - The publish workflow puts X.Y.Z-rc.N on crates.io. Cargo only picks a pre-release when a
+    dependency asks for it (iced-markdown-editor = "X.Y.Z-rc.N"), so users of ^X.Y stay on
+    the last release. Published versions cannot be deleted, only yanked.
+  - 'new' later collects the entries of all candidates of X.Y.Z into [X.Y.Z].
 
 "@
         'new' = @"
@@ -150,6 +157,7 @@ new [patch|minor|major|X.Y.Z] [-Yes]
   1. Picks the version:
        - X.Y.Z if given
        - else an untagged [X.Y.Z] section in the changelog (hand-written or after a rollback)
+       - else X.Y.Z while Cargo.toml is at a candidate X.Y.Z-rc.N
        - else bumps Cargo.toml's current version:
            patch -> 1.3.0 -> 1.3.1
            minor -> 1.3.0 -> 1.4.0
@@ -158,13 +166,17 @@ new [patch|minor|major|X.Y.Z] [-Yes]
                     ### Added / Changed / Deprecated / Removed or BREAKING  -> minor
                     anything else                                           -> patch
   2. If notes come from [Unreleased]: renames it to [X.Y.Z] - <today>, adds a new empty
-     [Unreleased], and updates the compare links at the bottom of the changelog.
+     [Unreleased], and updates the compare links at the bottom of the changelog. After release
+     candidates, [X.Y.Z] gets the entries of all [X.Y.Z-rc.N] sections plus [Unreleased],
+     grouped by type; the candidates' sections stay below it as history.
   3. If Cargo.toml's version differs from X.Y.Z, updates it (and runs 'cargo check' to refresh
      Cargo.lock).
-  4. Re-checks that Cargo.toml's version and the changelog's top section agree - the same
-     check the release workflow runs - before committing anything.
+  4. Re-checks that Cargo.toml's version and the changelog's top section agree - the tag is
+     named after the section, and the publish workflow aborts unless the tag matches
+     Cargo.toml - before committing anything.
   5. Commits whatever changed above as "Release vX.Y.Z" and pushes the branch.
-  6. Creates annotated tag vX.Y.Z with the section as message and pushes it.
+  6. Creates annotated tag vX.Y.Z with the section as message and pushes it. The publish
+     workflow then tests the crate and publishes vX.Y.Z to crates.io.
   Fails if the section has no entries, the tag exists, or the branch is behind the remote.
 
 "@
@@ -172,19 +184,20 @@ new [patch|minor|major|X.Y.Z] [-Yes]
 
 rollback [tag] [-Yes]
   Deletes the tag on the remote and locally (default: highest tag, rc tags included).
-  If the GitHub CLI ('gh') is installed and a GitHub Release exists for that tag, offers to
-  delete it too. Without 'gh', delete the release manually if one was published. Built
-  artifacts already downloaded by others stay untouched.
-  $Changelog and $CargoToml are not touched: running 'new' again re-releases the same version.
+  Use it when the publish workflow failed before 'cargo publish', e.g. on a test failure.
+  A version that reached crates.io cannot be deleted or published again: yank it with
+  'cargo yank --version X.Y.Z' and release the next version instead.
+  $Changelog and $CargoToml are not touched: running 'new' (or 'rc' for a candidate) again
+  re-releases the same version.
 
 "@
         'retag' = @"
 
 retag [tag] [-Yes]
   Moves an existing tag (default: highest) to the current HEAD, keeps its message,
-  and force-pushes it so the pipeline builds the same version again.
-  Note: if a GitHub Release already exists for that tag, re-running the workflow may fail to
-  publish over it depending on the release action's settings - check the run if that happens.
+  and force-pushes it so the publish workflow runs again for the same version.
+  Only useful if the version did not reach crates.io yet (the run failed before 'cargo
+  publish'): crates.io rejects a version that is already published.
 
 "@
         'show' = @"
@@ -363,7 +376,7 @@ function Save-CargoToml($Doc) {
 }
 
 function Find-CargoVersionLine($Doc) {
-    # matches the same way the release workflow reads it: grep '^version' | head -n 1
+    # the first top-level version = "..." line, i.e. [package].version
     for ($i = 0; $i -lt $Doc.Lines.Count; $i++) {
         if ($Doc.Lines[$i] -match '^version\s*=\s*"([^"]+)"') { return $i }
     }
@@ -470,7 +483,7 @@ function Get-AutoBump([string[]]$Body) {
 function Resolve-Target($Doc, [string]$CurrentCargoVersion) {
     $latestFinal = Get-LatestTag -FinalOnly
     $currentVersion = ConvertTo-Version $CurrentCargoVersion
-    if (-not $currentVersion) { throw "Cargo.toml has an unexpected version '$CurrentCargoVersion' (expected X.Y.Z)." }
+    if (-not $currentVersion) { throw "Cargo.toml has an unexpected version '$CurrentCargoVersion' (expected X.Y.Z or X.Y.Z-rc.N)." }
 
     $unreleased = Find-Section $Doc 'Unreleased'
     $unreleasedBody = @()
@@ -494,11 +507,23 @@ function Resolve-Target($Doc, [string]$CurrentCargoVersion) {
             $reason = "untagged section [$core] in $Changelog"
             if ($Bump -ne 'auto') { Write-Warning "'$Bump' ignored: $Changelog already contains the untagged section [$core]. Pass an explicit X.Y.Z to override." }
         }
+        elseif ($currentVersion.IsRc -and $Bump -eq 'auto') {
+            # the next candidate or the final release of the version being tested
+            $core = $currentVersion.Core
+            $reason = "release candidates of $core in progress (Cargo.toml $CurrentCargoVersion)"
+        }
         else {
             $level = $Bump
             if ($Bump -eq 'auto') { $level = Get-AutoBump $unreleasedBody }
-            $core = Step-Version $currentVersion $level
-            $reason = "$level bump ($(if ($Bump -eq 'auto') { 'auto from [Unreleased]' } else { 'requested' })) from Cargo.toml $CurrentCargoVersion"
+            # during release candidates, bump from the last release, not from the candidate
+            $base = $currentVersion
+            $from = "Cargo.toml $CurrentCargoVersion"
+            if ($currentVersion.IsRc) {
+                $base = $latestFinal
+                $from = "the latest release $(if ($latestFinal) { $latestFinal.Tag } else { '(none)' })"
+            }
+            $core = Step-Version $base $level
+            $reason = "$level bump ($(if ($Bump -eq 'auto') { 'auto from [Unreleased]' } else { 'requested' })) from $from"
         }
     }
 
@@ -521,16 +546,52 @@ function Resolve-Target($Doc, [string]$CurrentCargoVersion) {
     }
 }
 
-function Update-ChangelogForRelease($Doc, [string]$Core, [string]$PrevTag) {
-    $lines = $Doc.Lines
-    $tag = "v$Core"
+function Get-CandidateSections($Doc, [string]$Core) {
+    # the [X.Y.Z-rc.N] sections of a version, oldest first
+    $found = foreach ($line in $Doc.Lines) {
+        if ($line -match "^##\s+\[v?$([regex]::Escape($Core))-rc\.(\d+)\]") {
+            $name = "$Core-rc.$($Matches[1])"
+            [pscustomobject]@{ Name = $name; Rc = [int]$Matches[1]; Body = @(Get-SectionBody $Doc (Find-Section $Doc $name)) }
+        }
+    }
+    @($found | Sort-Object Rc)
+}
 
-    # [Unreleased] -> [X.Y.Z] - date, plus a fresh empty [Unreleased] on top
+function Merge-Sections([object[]]$Bodies) {
+    # one body with the entries of all, grouped by "### Type" in Keep a Changelog order
+    $order = @('Added', 'Changed', 'Deprecated', 'Removed', 'Fixed', 'Security')
+    $groups = [ordered]@{}
+    foreach ($body in $Bodies) {
+        $current = ''
+        foreach ($line in @($body)) {
+            if ($line -match '^###\s+(.+?)\s*$') { $current = $Matches[1]; continue }
+            if (-not $line.Trim()) { continue }
+            if (-not $groups.Contains($current)) { $groups[$current] = [System.Collections.Generic.List[string]]::new() }
+            $groups[$current].Add($line)
+        }
+    }
+    $names = @($groups.Keys | Where-Object { $_ -eq '' }) +
+             @($order | Where-Object { $groups.Contains($_) }) +
+             @($groups.Keys | Where-Object { $_ -and $_ -notin $order })
+    $result = [System.Collections.Generic.List[string]]::new()
+    foreach ($name in $names) {
+        if ($result.Count -gt 0) { $result.Add('') }
+        if ($name) { $result.Add("### $name") }
+        $result.AddRange($groups[$name])
+    }
+    $result.ToArray()
+}
+
+function Update-ChangelogForRelease($Doc, [string]$Name, [string[]]$Body, [string]$PrevTag) {
+    $lines = $Doc.Lines
+    $tag = "v$Name"
+
+    # [Unreleased] -> [Name] - date with the given entries, plus a fresh empty [Unreleased] on top
     $unreleased = Find-Section $Doc 'Unreleased'
-    $clean = @(Remove-EmptySubsections @(Get-SectionBody $Doc $unreleased))
+    $clean = @(Remove-EmptySubsections $Body)
     $lines.RemoveRange($unreleased.Start + 1, $unreleased.End - $unreleased.Start - 1)
     $lines.InsertRange($unreleased.Start + 1, [string[]](@('') + $clean + @('')))
-    $lines[$unreleased.Start] = "## [$Core] - $(Get-Date -Format 'yyyy-MM-dd')"
+    $lines[$unreleased.Start] = "## [$Name] - $(Get-Date -Format 'yyyy-MM-dd')"
     $lines.InsertRange($unreleased.Start, [string[]]@('## [Unreleased]', ''))
 
     # compare links at the bottom (Keep a Changelog reference-link convention)
@@ -539,10 +600,10 @@ function Update-ChangelogForRelease($Doc, [string]$Core, [string]$PrevTag) {
 
     $unreleasedLink = "[unreleased]: $web/compare/$tag...HEAD"
     if ($PrevTag) {
-        $versionLink = "[$Core]: $web/compare/$PrevTag...$tag"
+        $versionLink = "[$Name]: $web/compare/$PrevTag...$tag"
     }
     else {
-        $versionLink = "[$Core]: $web/releases/tag/$tag"
+        $versionLink = "[$Name]: $web/releases/tag/$tag"
     }
 
     $linkIndex = -1
@@ -567,7 +628,8 @@ function Format-TagMessage([string]$Title, [string[]]$Body) {
 }
 
 function Assert-VersionConsistency([string]$ChangelogPath, [string]$CargoTomlPath) {
-    # mirrors the version-match check in .github/workflows/release.yml
+    # the tag is named after the changelog section, and .github/workflows/publish.yml aborts
+    # unless the tag matches Cargo.toml's version
     $cargoVersion = Get-CargoVersion (Read-CargoToml $CargoTomlPath)
     $changelogLine = Get-Content $ChangelogPath | Where-Object { $_ -match '^##\s+\[[0-9]' } | Select-Object -First 1
     if (-not $changelogLine -or $changelogLine -notmatch '\[(\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?)\]') {
@@ -575,26 +637,65 @@ function Assert-VersionConsistency([string]$ChangelogPath, [string]$CargoTomlPat
     }
     $changelogVersion = $Matches[1]
     if ($cargoVersion -ne $changelogVersion) {
-        throw "Version mismatch: $CargoTomlPath has '$cargoVersion' but $ChangelogPath's latest section is [$changelogVersion]. The GitHub Actions build would abort on this - fix it before tagging."
+        throw "Version mismatch: $CargoTomlPath has '$cargoVersion' but $ChangelogPath's latest section is [$changelogVersion]. The publish workflow would abort on this - fix it before tagging."
     }
     $changelogVersion
 }
 
-# ============================================================== GitHub release (optional, via gh CLI)
+function Invoke-Release($Plan) {
+    # Shared by 'rc' and 'new': shows the plan, then writes the changelog section and Cargo.toml's
+    # version, commits, tags and pushes - so a candidate is recorded exactly like a release.
+    $tag = $Plan.Tag
+    $needsCommit = $Plan.Promote -or $Plan.BumpCargo
+    $branch = $null
+    if ($needsCommit) { $branch = Assert-CanCommit }
 
-function Remove-GitHubRelease([string]$Tag) {
-    $gh = Get-Command gh -ErrorAction SilentlyContinue
-    if (-not $gh) {
-        $web = Get-RepoWebUrl
-        $where = if ($web) { "$web/releases/tag/$Tag" } else { 'GitHub' }
-        Write-Warning "GitHub CLI ('gh') not found - if a GitHub Release was published for $Tag, delete it manually at $where."
-        return
+    Write-Host ''
+    Write-Host "Tag:        $tag  (previous: $(if ($Plan.PrevTag) { $Plan.PrevTag } else { '-' }))" -ForegroundColor Cyan
+    Write-Host "Version:    $($Plan.Reason)"
+    Write-Host "Commit:     $(Invoke-Git log -1 --oneline)"
+    Write-Host "Notes:      $($Plan.Source) from $Changelog"
+    if ($Plan.BumpCargo) { Write-Host "Cargo.toml: $($Plan.CurrentCargoVersion) -> $($Plan.Name)" }
+    if ($Plan.Promote) { Write-Host "Changelog:  [Unreleased] -> [$($Plan.Name)] - $(Get-Date -Format 'yyyy-MM-dd')" }
+    if ($needsCommit) { Write-Host "Commit:     'Release $tag' pushed to $branch" }
+    Write-Host ''
+    Write-Host $Plan.Message
+
+    if (-not (Confirm-Action "Release $tag?")) { Write-Host 'Aborted.'; return }
+
+    $changedPaths = [System.Collections.Generic.List[string]]::new()
+    if ($Plan.Promote) {
+        Update-ChangelogForRelease $Plan.Doc $Plan.Name $Plan.Body $Plan.PrevTag
+        Save-Changelog $Plan.Doc
+        $changedPaths.Add($changelogPath)
     }
-    & gh release view $Tag *> $null
-    if ($LASTEXITCODE -ne 0) { return }
-    if (-not (Confirm-Action "A GitHub Release exists for $Tag. Delete it too?")) { return }
-    & gh release delete $Tag --yes
-    if ($LASTEXITCODE -ne 0) { Write-Warning "Failed to delete the GitHub Release for $Tag - remove it manually if needed." }
+    if ($Plan.BumpCargo) {
+        Set-CargoVersion $Plan.CargoDoc $Plan.Name
+        Save-CargoToml $Plan.CargoDoc
+        $changedPaths.Add($cargoTomlPath)
+
+        if (Get-Command cargo -ErrorAction SilentlyContinue) {
+            Write-Host 'Updating Cargo.lock (cargo check)...'
+            & cargo check --quiet
+            if ($LASTEXITCODE -ne 0) { throw 'cargo check failed while refreshing Cargo.lock.' }
+            if (Test-Path $cargoLockPath) { $changedPaths.Add($cargoLockPath) }
+        }
+        else {
+            Write-Warning "cargo not found on PATH - Cargo.lock was not refreshed. Run 'cargo check' before pushing if Cargo.lock tracks the package version."
+        }
+    }
+
+    Assert-VersionConsistency $changelogPath $cargoTomlPath | Out-Null
+
+    if ($needsCommit) {
+        Invoke-Git add -- @($changedPaths | Select-Object -Unique)
+        Invoke-Git commit --quiet -m "Release $tag"
+        Invoke-Git push --quiet $Remote "HEAD:refs/heads/$branch"
+    }
+
+    New-AnnotatedTag -Name $tag -Text $Plan.Message
+    Invoke-Git push $Remote "refs/tags/$tag"
+    Write-Host "Released $tag - GitHub Actions should start publishing to crates.io." -ForegroundColor Green
 }
 
 # ============================================================== main
@@ -632,25 +733,41 @@ try {
 
             $n = 1 + [int](@(Get-VersionTags) | Where-Object { $_.IsRc -and $_.Core -eq $t.Core } |
                            Measure-Object -Property Rc -Maximum).Maximum
-            $tag = "v$($t.Core)-rc.$n"
-            $message = Format-TagMessage "Release candidate $tag" $t.Body
+            $name = "$($t.Core)-rc.$n"
+            $tag = "v$name"
 
-            Write-Host ''
-            Write-Host "Tag:     $tag" -ForegroundColor Cyan
-            Write-Host "Version: $($t.Reason)"
-            Write-Host "Commit:  $(Invoke-Git log -1 --oneline)"
-            Write-Host "Notes:   $($t.Source) from $Changelog ($Changelog and $CargoToml are not modified)"
-            Write-Host ''
-            Write-Host $message
-
-            if ($currentCargoVersion -ne $t.Core) {
-                Write-Warning "Cargo.toml is at $currentCargoVersion, not $($t.Core). The release workflow's version check compares the tag ($tag) against Cargo.toml and $Changelog exactly, so this build will likely fail validation. Use 'new' for a build that actually passes CI."
+            # a candidate's own section, left over from a rollback, is released as it is
+            $own = Find-Section $doc $name
+            if ($own) {
+                $body = @(Get-SectionBody $doc $own)
+                $source = "[$name]"
+            }
+            elseif ($t.HasOwnSection) {
+                throw "$Changelog already has a [$($t.Core)] section. Release candidates take their notes from [Unreleased]; use 'new' to release $($t.Core)."
+            }
+            else {
+                $body = $t.UnreleasedBody
+                $source = '[Unreleased]'
+            }
+            if (-not (Test-HasEntries $body)) {
+                throw "No entries in $source of $Changelog. Describe the changes in this candidate there first (or 'retag' to rebuild the last one)."
             }
 
-            if (-not (Confirm-Action "Create and push $tag?")) { Write-Host 'Aborted.'; break }
-            New-AnnotatedTag -Name $tag -Text $message
-            Invoke-Git push $Remote "refs/tags/$tag"
-            Write-Host "Pushed $tag - GitHub Actions should start." -ForegroundColor Green
+            $prev = Get-LatestTag
+            Invoke-Release ([pscustomobject]@{
+                Tag                 = $tag
+                Name                = $name
+                Reason              = $t.Reason
+                Body                = $body
+                Source              = $source
+                Promote             = -not $own
+                BumpCargo           = $currentCargoVersion -ne $name
+                CurrentCargoVersion = $currentCargoVersion
+                PrevTag             = $(if ($prev) { $prev.Tag })
+                Doc                 = $doc
+                CargoDoc            = $cargoDoc
+                Message             = Format-TagMessage "Release candidate $tag" $body
+            })
         }
 
         'new' {
@@ -662,74 +779,38 @@ try {
             $tag = "v$($t.Core)"
 
             if (Invoke-Git tag --list $tag) { throw "Tag $tag already exists. Use 'retag $tag' to rebuild or 'rollback $tag' first." }
-            if (-not (Test-HasEntries $t.Body)) {
-                throw "No entries in $($t.Source) of $Changelog. Describe your changes there first (or use 'rc' for a test build)."
+
+            # the release lists everything since the last one: its candidates' entries plus
+            # [Unreleased]; the candidates' sections stay in the changelog as history
+            $body = $t.Body
+            $source = $t.Source
+            $candidates = @()
+            if (-not $t.HasOwnSection) { $candidates = @(Get-CandidateSections $doc $t.Core) }
+            if ($candidates.Count -gt 0) {
+                $body = Merge-Sections (@($candidates | ForEach-Object { , $_.Body }) + , $t.UnreleasedBody)
+                $source = (@($candidates | ForEach-Object { "[$($_.Name)]" }) + '[Unreleased]') -join ' + '
             }
-
-            $promoteChangelog = -not $t.HasOwnSection
-            $bumpCargo = $currentCargoVersion -ne $t.Core
-            $needsCommit = $promoteChangelog -or $bumpCargo
-
-            $branch = $null
-            if ($needsCommit) { $branch = Assert-CanCommit }
-            elseif (Test-HasEntries $t.UnreleasedBody) {
+            if (-not (Test-HasEntries $body)) {
+                throw "No entries in $source of $Changelog. Describe your changes there first (or use 'rc' for a test build)."
+            }
+            if ($t.HasOwnSection -and (Test-HasEntries $t.UnreleasedBody)) {
                 Write-Warning "[Unreleased] also has entries - they stay there for the next release."
             }
 
-            $prevTag = $null
-            if ($t.LatestFinal) { $prevTag = $t.LatestFinal.Tag }
-            $message = Format-TagMessage "Release $tag" $t.Body
-
-            Write-Host ''
-            Write-Host "Tag:       $tag  (previous release: $(if ($prevTag) { $prevTag } else { '-' }))" -ForegroundColor Cyan
-            Write-Host "Version:   $($t.Reason)"
-            Write-Host "Commit:    $(Invoke-Git log -1 --oneline)"
-            Write-Host "Notes:     $($t.Source) from $Changelog"
-            if ($bumpCargo) { Write-Host "Cargo.toml: $currentCargoVersion -> $($t.Core)" }
-            if ($promoteChangelog) {
-                Write-Host "Changelog: [Unreleased] -> [$($t.Core)] - $(Get-Date -Format 'yyyy-MM-dd')"
-            }
-            if ($needsCommit) { Write-Host "Commit:    'Release $tag' pushed to $branch" }
-            Write-Host ''
-            Write-Host $message
-
-            if (-not (Confirm-Action "Release $tag?")) { Write-Host 'Aborted.'; break }
-
-            $changedPaths = [System.Collections.Generic.List[string]]::new()
-
-            if ($promoteChangelog) {
-                Update-ChangelogForRelease $doc $t.Core $prevTag
-                Save-Changelog $doc
-                $changedPaths.Add($changelogPath)
-            }
-
-            if ($bumpCargo) {
-                Set-CargoVersion $cargoDoc $t.Core
-                Save-CargoToml $cargoDoc
-                $changedPaths.Add($cargoTomlPath)
-
-                if (Get-Command cargo -ErrorAction SilentlyContinue) {
-                    Write-Host 'Updating Cargo.lock (cargo check)...'
-                    & cargo check --quiet
-                    if ($LASTEXITCODE -ne 0) { throw 'cargo check failed while refreshing Cargo.lock.' }
-                    if (Test-Path $cargoLockPath) { $changedPaths.Add($cargoLockPath) }
-                }
-                else {
-                    Write-Warning "cargo not found on PATH - Cargo.lock was not refreshed. Run 'cargo check' before pushing if Cargo.lock tracks the package version."
-                }
-            }
-
-            Assert-VersionConsistency $changelogPath $cargoTomlPath | Out-Null
-
-            if ($needsCommit) {
-                Invoke-Git add -- @($changedPaths | Select-Object -Unique)
-                Invoke-Git commit --quiet -m "Release $tag"
-                Invoke-Git push --quiet $Remote "HEAD:refs/heads/$branch"
-            }
-
-            New-AnnotatedTag -Name $tag -Text $message
-            Invoke-Git push $Remote "refs/tags/$tag"
-            Write-Host "Released $tag - GitHub Actions should start the build." -ForegroundColor Green
+            Invoke-Release ([pscustomobject]@{
+                Tag                 = $tag
+                Name                = $t.Core
+                Reason              = $t.Reason
+                Body                = $body
+                Source              = $source
+                Promote             = -not $t.HasOwnSection
+                BumpCargo           = $currentCargoVersion -ne $t.Core
+                CurrentCargoVersion = $currentCargoVersion
+                PrevTag             = $(if ($t.LatestFinal) { $t.LatestFinal.Tag })
+                Doc                 = $doc
+                CargoDoc            = $cargoDoc
+                Message             = Format-TagMessage "Release $tag" $body
+            })
         }
 
         'rollback' {
@@ -737,18 +818,16 @@ try {
             Write-Host ''
             Invoke-Git --no-pager show --no-patch $tag
             Write-Host ''
-            Write-Warning 'Only the tag is removed here. A GitHub Release attached to it stays online unless removed separately (see below). Built artifacts already downloaded by others are untouched.'
+            Write-Warning "Only the tag is removed here. If $($tag.TrimStart('v')) already reached crates.io, it stays there and cannot be published again - yank it with 'cargo yank --version $($tag.TrimStart('v'))' and release the next version instead."
 
             if (-not (Confirm-Action "Delete $tag locally and on ${Remote}?")) { Write-Host 'Aborted.'; break }
             Invoke-Git push $Remote --delete "refs/tags/$tag"
             Invoke-Git tag -d $tag
-            Remove-GitHubRelease $tag
 
             $prev = Get-LatestTag
             Write-Host "Deleted $tag. Highest tag is now: $(if ($prev) { $prev.Tag } else { 'none' })" -ForegroundColor Green
-            if (-not ($tag -match '-rc\.')) {
-                Write-Host "The [$($tag.TrimStart('v'))] section stays in $Changelog and the version stays in $CargoToml - running 'new' again re-releases it."
-            }
+            $again = if ($tag -match '-rc\.') { 'rc' } else { 'new' }
+            Write-Host "The [$($tag.TrimStart('v'))] section stays in $Changelog and the version stays in $CargoToml - running '$again' again re-releases it."
         }
 
         'retag' {
@@ -762,7 +841,7 @@ try {
             Write-Host "To:   $(Invoke-Git log -1 --oneline HEAD)"
             Write-Host ''
 
-            if (-not (Confirm-Action "Move $tag to HEAD and force-push? (triggers a new GitHub Actions run)")) { Write-Host 'Aborted.'; break }
+            if (-not (Confirm-Action "Move $tag to HEAD and force-push? (publishes again - fails if the version is already on crates.io)")) { Write-Host 'Aborted.'; break }
             New-AnnotatedTag -Name $tag -Text $message -Force
             Invoke-Git push --force $Remote "refs/tags/$tag"
             Write-Host "Re-pushed $tag." -ForegroundColor Green

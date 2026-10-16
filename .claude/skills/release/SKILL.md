@@ -1,61 +1,77 @@
 ---
 name: release
 description: >
-  Cuts a new iced-markdown-editor release: bumps the version consistently across Cargo.toml and
-  CHANGELOG.md, rewrites the changelog entry in Keep a Changelog format, commits,
-  and (with explicit confirmation) tags and pushes to trigger the GitHub Actions
-  release workflow. Use when the user says "cut a release", "release vX.Y.Z",
-  "bump the version", or invokes "/release".
+  Cuts a new iced-markdown-editor release with scripts/release.ps1: checks the [Unreleased]
+  entries in CHANGELOG.md, picks the version, and (with explicit confirmation) runs the script,
+  which bumps Cargo.toml, promotes the changelog section, commits, tags and pushes. The pushed
+  tag makes GitHub Actions publish the crate to crates.io; no GitHub release is created. Use
+  when the user says "cut a release", "release vX.Y.Z", "release candidate", "bump the version",
+  or invokes "/release".
 ---
 
-Follow the release process defined in `README.md` under "Building and Releasing" and the
-changelog conventions defined in `CHANGELOG.md` (Keep a Changelog + Semantic Versioning).
+# Release
+
+Releases go through `scripts/release.ps1` (Windows) or `scripts/release.zsh` (macOS, Linux);
+both behave the same. Never write your own release script, never edit `Cargo.toml`'s version or
+the changelog's version headings by hand, and never create or push tags with plain `git`
+commands: the script keeps changelog, `Cargo.toml`, `Cargo.lock`, commit and tag consistent.
+
+## What happens on a release
+
+1. The script renames `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] - <today>`, adds a new
+   empty `[Unreleased]` and the compare links, sets `Cargo.toml` to `X.Y.Z`, refreshes
+   `Cargo.lock`, commits `Release vX.Y.Z` and pushes the branch.
+2. It creates the annotated tag `vX.Y.Z` (message = the changelog section) and pushes it.
+3. `.github/workflows/publish.yml` runs on the tag: checks that the tag matches `Cargo.toml`'s
+   version, runs `cargo test --all-features` and `cargo publish --dry-run`, then publishes to
+   crates.io. It does **not** create a GitHub release.
+
+A release candidate (`rc`) works the same with `X.Y.Z-rc.N`: its own `[X.Y.Z-rc.N]` section,
+`Cargo.toml` at `X.Y.Z-rc.N`, tag `vX.Y.Z-rc.N`, and it is published to crates.io as a
+pre-release version. `new` later collects the entries of all candidates into `[X.Y.Z]`.
+
+A version on crates.io is permanent: it can be yanked (`cargo yank --version X.Y.Z`) but never
+deleted or published again. `rollback` and `retag` only help when the workflow failed before
+`cargo publish`.
 
 ## Steps
 
-1. **Determine the next version.**
-   - Read `Cargo.toml`'s `[package].version` for the current version.
-   - Read the unreleased changes (commits since the last version tag, or content already
-     staged under `<!-- next-header -->` in `CHANGELOG.md` if present).
-   - Pick the next SemVer version: `MAJOR` for breaking changes, `MINOR` for backwards-compatible
-     features, `PATCH` for fixes only. Confirm the choice with the user if it's ambiguous.
+1. **Check the changelog.** Read `## [Unreleased]` in `CHANGELOG.md`. If it is empty or misses
+   user-visible changes since the last tag (`git describe --tags --abbrev=0 --match "v*"`), use
+   the `changelog` skill to write the entries first. The script refuses to release without
+   entries.
 
-2. **Update `CHANGELOG.md`.**
-   - Add a new section directly below `<!-- next-header -->`:
-     `## [X.Y.Z] - YYYY-MM-DD` (today's date).
-   - Group entries under the standard Keep a Changelog headings, only the ones that apply:
-     `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`.
-   - Write entries as user-facing prose describing behavior, not raw commit messages —
-     match the descriptive style of existing entries (see the `[0.2.0]` entry).
-   - Do not touch or reformat older version sections.
+2. **Check the working tree.** `git status --short` should be clean apart from `CHANGELOG.md`;
+   other uncommitted changes are not part of the release. The branch must not be behind its
+   remote. Run `cargo test --all-features` locally so the workflow does not fail after the tag is
+   pushed.
 
-3. **Update `Cargo.toml`.**
-   - Set `[package].version` to the same `X.Y.Z`. This is the field the release workflow
-     checks against the changelog header, so the two **must** match exactly.
-   - If `Cargo.lock` tracks the package version, regenerate it (`cargo check` is enough).
+3. **Pick the command and version.** Without an argument the script bumps patch (only `Fixed` /
+   `Security`) or minor (`Added`, `Changed`, `Deprecated`, `Removed`, `BREAKING`), never major.
+   While `Cargo.toml` is at a candidate `X.Y.Z-rc.N`, it continues with `X.Y.Z`.
+   - Release: `.\scripts\release.ps1 new` (or `new patch|minor|major|X.Y.Z`)
+   - Release candidate: `.\scripts\release.ps1 rc` (or `rc patch|minor|major|X.Y.Z`)
+   - For the version it would pick, `.\scripts\release.ps1 new -h` explains the rules; the script
+     prints the plan (tag, version reason, changelog and `Cargo.toml` changes, tag message)
+     before it asks for confirmation.
 
-4. **Verify consistency before committing.**
-   - Confirm `Cargo.toml` version == the new `CHANGELOG.md` H2 header version. The GitHub
-     Actions workflow aborts the build on mismatch, so catch it locally first.
+   Breaking changes in a 0.x crate are a minor bump; from 1.0 on they need `major`. Ask the user
+   if the choice is not obvious.
 
-5. **Commit.**
-   - Stage exactly `Cargo.toml`, `Cargo.lock` (if changed), and `CHANGELOG.md`.
-   - Commit message: `Release vX.Y.Z` (matches the format shown in the README's release steps).
+4. **Confirm, then run.** Running the script commits, pushes and publishes to crates.io, which
+   cannot be undone. Show the user the `[Unreleased]` section and the version you expect, and ask
+   explicitly before running it — even if earlier steps were approved. Then run it with `-Yes`
+   (`--yes` for the zsh script), since the session cannot answer its prompt.
 
-6. **Confirm before tagging/pushing.**
-   - Tagging and pushing trigger a public GitHub Actions release build and publish binaries —
-     this is a hard-to-reverse, shared-state action. Always show the user the diff/commit and
-     explicitly ask before running:
-     ```
-     git tag vX.Y.Z
-     git push
-     git push origin vX.Y.Z
-     ```
-   - Never push or tag without explicit confirmation, even if earlier steps were pre-approved.
+5. **Report.** Give the tag and the link to the workflow run
+   (`https://github.com/iocast/iced-markdown-editor/actions/workflows/publish.yml`) and the crate
+   page (`https://crates.io/crates/iced-markdown-editor`).
 
-## Boundaries
+## If the publish workflow fails
 
-Only prepares and (on confirmation) publishes a release exactly as documented in README.md.
-Does not invent changelog categories beyond Keep a Changelog's standard six, does not bump
-the version without a clear rationale from the diff/commits, and does not skip the
-Cargo.toml/CHANGELOG.md consistency check the CI relies on.
+- Failed before `cargo publish` (tests, version check): fix the cause, commit, then either
+  `.\scripts\release.ps1 retag vX.Y.Z -Yes` to move the tag to the fix, or
+  `.\scripts\release.ps1 rollback vX.Y.Z -Yes` and release again. Ask before either: both
+  rewrite a pushed tag.
+- Failed at or after `cargo publish`: check crates.io. If the version is there, it is released;
+  do not retag. A broken published version gets yanked and fixed in the next patch release.
