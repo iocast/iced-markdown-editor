@@ -53,10 +53,39 @@
 //! Tables, task lists and strikethrough can be disabled at runtime with
 //! [`Features`] ([`EditorState::features`]).
 //!
+//! ## Theme
+//!
+//! Colours and font sizes come from an [`EditorStyle`]: a preset, one
+//! derived from the application's Iced theme, or your own [`Palette`] and
+//! [`Typography`] ([`EditorState::style`]).
+//!
+//! ```
+//! use iced_markdown_editor::{EditorState, EditorStyle};
+//!
+//! let editor = EditorState::new().style(EditorStyle::dark());
+//!
+//! // Match the rest of the application.
+//! let editor = EditorState::new().style(EditorStyle::from_theme(&iced::Theme::Dark));
+//! ```
+//!
+//! [`EditorState::set_style`] changes it at runtime, e.g. when the
+//! application theme changes.
+//!
 //! ## Languages
 //!
 //! The toolbar, link bar and status bar speak English, German, French,
-//! Spanish and Italian ([`Language`], [`EditorState::language`]).
+//! Spanish and Italian ([`Language`], [`EditorState::language`]). The
+//! document itself is never translated.
+//!
+//! ```
+//! use iced_markdown_editor::{EditorState, Language};
+//!
+//! // E.g. from the operating system locale; unknown tags fall back to English.
+//! let language = Language::from_tag("de-CH").unwrap_or_default();
+//! let editor = EditorState::new().language(language);
+//! ```
+//!
+//! [`EditorState::set_language`] switches it at runtime.
 //!
 //! ## Extensions
 //!
