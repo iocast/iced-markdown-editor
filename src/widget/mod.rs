@@ -26,6 +26,7 @@ use crate::extension::{BlockRenderer, Frame, Rectangle, RenderRequest};
 use crate::features::Features;
 use crate::fonts::Fonts;
 use crate::highlight::{self, COMMON_LANGUAGES, CodeHighlighter, HighlightRequest};
+use crate::i18n::Language;
 use crate::images::{
     self, ImageCache, ImageId, ImageLoader, ImageRejection, ImageSettings, ImageSource, PastedImage,
 };
@@ -292,6 +293,7 @@ pub struct EditorState {
     pub(crate) highlighter: Option<Arc<dyn CodeHighlighter>>,
     pub(crate) highlight_cache: RefCell<HashMap<u64, Arc<Vec<Color>>>>,
     pub(crate) features: Features,
+    pub(crate) language: Language,
     pub(crate) renderers: Vec<Arc<dyn BlockRenderer>>,
     /// Language -> index in `renderers`.
     pub(crate) renderer_languages: HashMap<String, usize>,
@@ -354,6 +356,7 @@ impl EditorState {
             highlighter: None,
             highlight_cache: RefCell::new(HashMap::new()),
             features: Features::default(),
+            language: Language::default(),
             renderers: Vec::new(),
             renderer_languages: HashMap::new(),
             render_cache: RefCell::new(HashMap::new()),
@@ -427,6 +430,12 @@ impl EditorState {
     /// is read again with the new features.
     pub fn features(mut self, features: Features) -> Self {
         self.set_features(features);
+        self
+    }
+
+    /// Builder: sets the language of the toolbar, link bar and status bar.
+    pub fn language(mut self, language: Language) -> Self {
+        self.set_language(language);
         self
     }
 
@@ -537,6 +546,10 @@ impl EditorState {
 
     pub fn current_features(&self) -> Features {
         self.features
+    }
+
+    pub fn current_language(&self) -> Language {
+        self.language
     }
 
     /// Languages drawn by block renderers.
@@ -734,6 +747,12 @@ impl EditorState {
         self.highlighter = highlighter;
         self.highlight_cache.borrow_mut().clear();
         self.relayout();
+    }
+
+    /// Sets the language of the toolbar, link bar and status bar. The
+    /// document is not changed.
+    pub fn set_language(&mut self, language: Language) {
+        self.language = language;
     }
 
     /// Enables or disables optional Markdown features. In WYSIWYG mode the

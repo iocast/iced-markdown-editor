@@ -5,6 +5,13 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 
 ## [Unreleased]
 
+### Added
+- The toolbar, link bar and status bar are available in English, German, French, Spanish and Italian: `Language` (`EditorState::language`, `set_language`, `current_language`); `Language::from_tag` maps a locale such as `de-CH` to a language
+- `ImageRejection::message` gives the rejection reason as a translated sentence for the user
+
+### Changed
+- The status bar uses the singular for one item, e.g. "1 word" instead of "1 words"
+
 ## [0.3.0] - 2026-10-11
 
 ### Added

@@ -9,6 +9,7 @@ with the GFM extensions strikethrough, task lists and tables. Desktop and web.
 - Tables with column alignment; Tab and Enter move between cells
 - WYSIWYG and Markdown source mode on the same pages
 - Zoom, undo / redo, clipboard
+- Toolbar and status bar in English, German, French, Spanish and Italian (Fluent)
 - Optional syntax highlighting (`syntect`) and images (`images`)
 - Round trip tested against all 652 examples of the CommonMark 0.31.2 spec
 

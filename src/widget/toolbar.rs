@@ -6,12 +6,10 @@
 use super::{Action, Command, EditorState, Formatting, Mode};
 use crate::doc::{BlockKind, ColumnAlign};
 use crate::fonts;
+use crate::i18n::{self, Language};
 use crate::style::Palette;
 use iced::widget::{button, pick_list, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length};
-
-/// Entry in the language list that means "no language".
-pub(crate) const PLAIN: &str = "plain text";
 
 /// An empty element that takes all remaining width.
 pub(crate) fn fill<'a>() -> Element<'a, Action> {
@@ -81,19 +79,25 @@ fn separator(palette: Palette) -> Element<'static, Action> {
 }
 
 /// Language selector shown while the caret is in a code block.
-fn language_list(format: &Formatting, languages: Vec<String>) -> Element<'static, Action> {
-    let mut options = vec![PLAIN.to_string()];
+fn language_list(
+    format: &Formatting,
+    languages: Vec<String>,
+    ui: Language,
+) -> Element<'static, Action> {
+    // Entry that means "no language".
+    let plain = i18n::text(ui, "code-plain-text");
+    let mut options = vec![plain.clone()];
     options.extend(languages);
     let current = format
         .code_language
         .clone()
-        .unwrap_or_else(|| PLAIN.to_string());
+        .unwrap_or_else(|| plain.clone());
     if !options.contains(&current) {
         options.push(current.clone());
     }
 
-    pick_list(options, Some(current), |language: String| {
-        let language = (language != PLAIN).then_some(language);
+    pick_list(options, Some(current), move |language: String| {
+        let language = (language != plain).then_some(language);
         Action::from(Command::SetCodeLanguage(language))
     })
     .font(fonts::SANS)
@@ -113,6 +117,7 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
     let p = state.style.palette;
     let task = format.task.is_some();
     let set = |kind| Some(Command::SetBlock(kind));
+    let tr = |id| i18n::text(state.language, id);
 
     let mut bar = row![
         tool(p, "\u{21B6}", ui, false, can_undo.then_some(Command::Undo)),
@@ -120,7 +125,7 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
         separator(p),
         tool(
             p,
-            "Normal",
+            tr("toolbar-normal"),
             ui,
             visual && block == BlockKind::Paragraph,
             set(BlockKind::Paragraph)
@@ -149,14 +154,14 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
         separator(p),
         tool(
             p,
-            "B",
+            tr("toolbar-bold"),
             fonts::SANS_BOLD,
             visual && format.bold,
             Some(Command::ToggleBold)
         ),
         tool(
             p,
-            "I",
+            tr("toolbar-italic"),
             fonts::SANS_ITALIC,
             visual && format.italic,
             Some(Command::ToggleItalic)
@@ -170,7 +175,7 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
         ),
         tool(
             p,
-            "Link",
+            tr("toolbar-link"),
             ui,
             visual && format.link.is_some(),
             Some(Command::EditLink)
@@ -182,7 +187,7 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
     if features.strikethrough {
         bar = bar.push(tool(
             p,
-            "S",
+            tr("toolbar-strike"),
             ui,
             visual && format.strike,
             Some(Command::ToggleStrike),
@@ -190,7 +195,13 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
     }
 
     if state.image_settings.enabled() {
-        bar = bar.push(tool(p, "Image", ui, false, Some(Command::RequestImage)));
+        bar = bar.push(tool(
+            p,
+            tr("toolbar-image"),
+            ui,
+            false,
+            Some(Command::RequestImage),
+        ));
     }
 
     bar = bar
@@ -237,7 +248,11 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
         ));
 
     if visual && block == BlockKind::Code {
-        bar = bar.push(language_list(format, state.code_languages()));
+        bar = bar.push(language_list(
+            format,
+            state.code_languages(),
+            state.language,
+        ));
     }
 
     bar = bar.push(tool(p, "\u{2015}", ui, false, Some(Command::InsertRule)));
@@ -245,7 +260,7 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
     if features.tables {
         bar = bar.push(tool(
             p,
-            "Table",
+            tr("toolbar-table"),
             ui,
             visual && format.table,
             (!format.table).then_some(Command::InsertTable {
@@ -260,22 +275,28 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
         bar = bar
             .push(tool(
                 p,
-                "+ Row",
+                tr("toolbar-add-row"),
                 ui,
                 false,
                 Some(Command::InsertRow { below: true }),
             ))
             .push(tool(
                 p,
-                "+ Col",
+                tr("toolbar-add-column"),
                 ui,
                 false,
                 Some(Command::InsertColumn { right: true }),
             ))
-            .push(tool(p, "\u{2212} Row", ui, false, Some(Command::DeleteRow)))
             .push(tool(
                 p,
-                "\u{2212} Col",
+                tr("toolbar-delete-row"),
+                ui,
+                false,
+                Some(Command::DeleteRow),
+            ))
+            .push(tool(
+                p,
+                tr("toolbar-delete-column"),
                 ui,
                 false,
                 Some(Command::DeleteColumn),
@@ -314,7 +335,7 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
         ))
         .push(tool(
             p,
-            "Source",
+            tr("toolbar-source"),
             ui,
             !visual,
             Some(Command::SetMode(Mode::Source)),

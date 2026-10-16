@@ -14,6 +14,7 @@
 //! images are shown from `data:` URLs and the loader.
 
 use crate::doc::{Block, Document, Link, OBJ, Style};
+use crate::i18n::{self, Language};
 use crate::markdown;
 use std::collections::HashMap;
 use std::fmt;
@@ -22,8 +23,6 @@ use std::sync::Arc;
 
 /// URL scheme of placeholders for images the application has not stored yet.
 pub(crate) const PENDING_PREFIX: &str = "pending-image:";
-/// Text shown for a placeholder.
-pub(crate) const PENDING_ALT: &str = "Saving image\u{2026}";
 
 /// What the editor does with pasted, dropped or inserted images.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -182,7 +181,8 @@ impl fmt::Debug for PastedImage {
     }
 }
 
-/// Why an image was not accepted.
+/// Why an image was not accepted. `Display` gives a short English reason;
+/// [`ImageRejection::message`] a translated one for the user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImageRejection {
     /// [`ImageMode::Disabled`].
@@ -211,6 +211,30 @@ impl fmt::Display for ImageRejection {
                 )
             }
             ImageRejection::Unreadable(error) => write!(f, "cannot read the image: {error}"),
+        }
+    }
+}
+
+impl ImageRejection {
+    /// The reason as a sentence for the user, in `language`.
+    pub fn message(&self, language: Language) -> String {
+        match self {
+            ImageRejection::Disabled => i18n::text(language, "image-rejected-disabled"),
+            ImageRejection::UnsupportedType(mime) => i18n::text_with(
+                language,
+                "image-rejected-type",
+                &[("mime", mime.as_str().into())],
+            ),
+            ImageRejection::TooLarge { size, max } => i18n::text_with(
+                language,
+                "image-rejected-too-large",
+                &[("size", (size / 1024).into()), ("max", (max / 1024).into())],
+            ),
+            ImageRejection::Unreadable(error) => i18n::text_with(
+                language,
+                "image-rejected-unreadable",
+                &[("error", error.as_str().into())],
+            ),
         }
     }
 }
@@ -630,7 +654,7 @@ mod tests {
     #[test]
     fn placeholders_in_source_lines() {
         let id = ImageId(3);
-        let line = format!("x ![{PENDING_ALT}]({}) y", pending_url(id));
+        let line = format!("x ![Saving image\u{2026}]({}) y", pending_url(id));
         let mut block = Block::new(Vec::new(), Leaf::Line);
         for c in line.chars() {
             block.push(c, Style::default());

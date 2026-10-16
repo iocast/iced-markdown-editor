@@ -1,7 +1,7 @@
 //! Full demo of the `markdown_editor` widget (desktop).
 //!
-//! Bar 1: file handling, theme, Tab width, syntax highlighting,
-//!        fullscreen (F11), event log.
+//! Bar 1: file handling, theme, interface language, Tab width, syntax
+//!        highlighting, fullscreen (F11), event log.
 //! Bar 2: full width (no paper), paper size, orientation, margins, zoom.
 //! Images are saved in `assets/` next to the saved document.
 //!
@@ -13,8 +13,8 @@ use iced::widget::{button, column, container, pick_list, row, text};
 use iced::{Alignment, Element, Length, Subscription, Task, Theme, window};
 use iced_markdown_editor::{
     Action, CodeHighlighter, Command, EditorState, EditorStyle, Event, FONTS, ImageId,
-    ImageSettings, KeyBinding, Margins, Measure, Orientation, Output, PageSize, Paper, PastedImage,
-    SyntectHighlighter, ZoomSettings, ZoomShortcuts, markdown_editor,
+    ImageSettings, KeyBinding, Language, Margins, Measure, Orientation, Output, PageSize, Paper,
+    PastedImage, SyntectHighlighter, ZoomSettings, ZoomShortcuts, markdown_editor,
 };
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -338,6 +338,7 @@ enum Message {
     ImagePicked(Option<PathBuf>),
     ImageStored(ImageId, Result<String, String>),
     Theme(ThemeChoice),
+    Language(Language),
     TabWidth(TabWidth),
     Highlighting(bool),
     Paper(PaperChoice),
@@ -484,6 +485,7 @@ impl Demo {
                     }
                 },
                 Event::ImageRejected { reason, .. } => {
+                    let reason = reason.message(self.editor.current_language());
                     self.log(format!("Image not inserted: {reason}"))
                 }
                 Event::ImageRequested => tasks.push(Task::done(Message::PickImage)),
@@ -584,6 +586,10 @@ impl Demo {
                 self.log(format!("Theme: {choice}"));
                 self.theme = choice;
             }
+            Message::Language(language) => {
+                self.editor.set_language(language);
+                self.log(format!("Language: {language}"));
+            }
             Message::TabWidth(width) => {
                 self.tab_width = width;
                 self.editor.set_tab_width(width.0);
@@ -681,6 +687,13 @@ impl Demo {
             .text_size(13)
             .padding([4, 8])
             .width(Length::Fixed(200.0)),
+            pick_list(
+                Language::ALL,
+                Some(self.editor.current_language()),
+                Message::Language
+            )
+            .text_size(13)
+            .padding([4, 8]),
             pick_list(&TAB_WIDTHS[..], Some(self.tab_width), Message::TabWidth)
                 .text_size(13)
                 .padding([4, 8]),

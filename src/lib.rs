@@ -53,6 +53,11 @@
 //! Tables, task lists and strikethrough can be disabled at runtime with
 //! [`Features`] ([`EditorState::features`]).
 //!
+//! ## Languages
+//!
+//! The toolbar, link bar and status bar speak English, German, French,
+//! Spanish and Italian ([`Language`], [`EditorState::language`]).
+//!
 //! ## Extensions
 //!
 //! A [`BlockRenderer`] (from your own crate) draws fenced code blocks of
@@ -66,6 +71,7 @@ pub mod extension;
 pub mod features;
 pub(crate) mod fonts;
 pub mod highlight;
+pub mod i18n;
 pub mod images;
 pub(crate) mod layout;
 mod markdown;
@@ -84,6 +90,7 @@ pub use extension::{BlockRenderer, RenderRequest};
 pub use features::Features;
 pub use fonts::FONTS;
 pub use highlight::{CodeHighlighter, HighlightRequest, HighlightSpan};
+pub use i18n::Language;
 pub use images::{
     ImageId, ImageLoader, ImageMode, ImageRejection, ImageSettings, ImageSource, PastedImage,
 };

@@ -2,6 +2,7 @@
 
 use super::super::{Action, EditKind, EditorState, Event, Mode};
 use crate::doc::{Link, OBJ, Selection, Style};
+use crate::i18n;
 use crate::images::{self, ImageId, ImageMode, ImageRejection, ImageSource, PastedImage};
 use crate::markdown;
 use iced::Task;
@@ -72,7 +73,8 @@ impl EditorState {
                 let id = self.new_image_id();
                 let bytes: Arc<[u8]> = Arc::from(bytes);
                 self.pending_images.insert(id, bytes.clone());
-                let task = self.insert_image(&images::pending_url(id), images::PENDING_ALT);
+                let alt = i18n::text(self.language, "image-saving");
+                let task = self.insert_image(&images::pending_url(id), &alt);
                 self.pending_events.push(Event::ImagePasted(PastedImage {
                     id,
                     bytes,

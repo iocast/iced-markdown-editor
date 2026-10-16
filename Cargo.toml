@@ -26,6 +26,9 @@ ab_glyph = "^0.2"
 pulldown-cmark = { version = "^0.13", default-features = false, features = ["html"] }
 # Instant / SystemTime that also work in the browser.
 web-time = "^1.1"
+# Translations of the built-in toolbar and status bar (Project Fluent).
+fluent-bundle = "^0.16"
+unic-langid = "^0.9"
 # Pure-Rust regex engine: no Oniguruma C library needed.
 syntect = { version = "^5.3", default-features = false, features = ["default-fancy"], optional = true }
 imagesize = { version = "^0.15", optional = true }
@@ -37,6 +40,7 @@ arboard = { version = "^3.6", optional = true }
 png = { version = "^0.18", optional = true }
 
 [dev-dependencies]
+fluent-syntax = "^0.12"
 rfd = "^0.17"
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = "^1.0"

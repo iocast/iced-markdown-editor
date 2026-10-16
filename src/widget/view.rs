@@ -6,6 +6,7 @@ use super::edit::builtin_command;
 use super::toolbar::{self, fill};
 use super::{Action, Command, EditorState, Inner, Mode};
 use crate::fonts;
+use crate::i18n;
 use crate::render;
 use iced::keyboard::{self, Key, Modifiers, key::Named};
 use iced::mouse::{self, ScrollDelta};
@@ -499,6 +500,8 @@ impl<'a> MarkdownEditor<'a> {
             ..container::Style::default()
         };
 
+        let language = state.language;
+        let tr = |id| i18n::text(language, id);
         let mut content = column![];
 
         if self.toolbar {
@@ -513,7 +516,7 @@ impl<'a> MarkdownEditor<'a> {
         if let Some(url) = &state.link_url {
             let link_bar = container(
                 row![
-                    label("Link address", 12).color(palette.muted),
+                    label(tr("link-address"), 12).color(palette.muted),
                     text_input("https://", url)
                         .on_input(|url| Action(Inner::LinkUrl(url)))
                         .on_submit(Action(Inner::LinkApply))
@@ -521,15 +524,15 @@ impl<'a> MarkdownEditor<'a> {
                         .padding(6)
                         .size(13)
                         .width(Length::Fixed(420.0)),
-                    button(label("Apply", 12))
+                    button(label(tr("link-apply"), 12))
                         .on_press(Action(Inner::LinkApply))
                         .padding([5, 10])
                         .style(toolbar::button_style(palette, true)),
-                    button(label("Remove link", 12))
+                    button(label(tr("link-remove"), 12))
                         .on_press(Action(Inner::LinkRemove))
                         .padding([5, 10])
                         .style(toolbar::button_style(palette, false)),
-                    button(label("Cancel", 12))
+                    button(label(tr("link-cancel"), 12))
                         .on_press(Action(Inner::LinkCancel))
                         .padding([5, 10])
                         .style(toolbar::button_style(palette, false)),
@@ -551,40 +554,70 @@ impl<'a> MarkdownEditor<'a> {
 
         if self.status_bar {
             let mode = match state.mode {
-                Mode::Wysiwyg => "WYSIWYG",
-                Mode::Source => "Markdown source",
+                Mode::Wysiwyg => tr("status-mode-wysiwyg"),
+                Mode::Source => tr("status-mode-source"),
             };
 
             let mut status = row![].spacing(18).align_y(Alignment::Center);
 
             if !state.paper.is_fill() {
-                status = status.push(label(
-                    format!("Page {} of {}", state.current_page(), state.page_count()),
-                    12,
-                ));
+                let page = i18n::text_with(
+                    language,
+                    "status-page",
+                    &[
+                        ("current", state.current_page().into()),
+                        ("total", state.page_count().into()),
+                    ],
+                );
+                status = status.push(label(page, 12));
             }
 
-            status = status.push(label(format!("{} words", state.word_count()), 12));
+            let words = i18n::text_with(
+                language,
+                "status-words",
+                &[("count", state.word_count().into())],
+            );
+            status = status.push(label(words, 12));
 
             let (checked, total) = state.task_progress();
             if total > 0 {
-                status = status.push(label(format!("{checked}/{total} tasks done"), 12));
+                let tasks = i18n::text_with(
+                    language,
+                    "status-tasks",
+                    &[("checked", checked.into()), ("total", total.into())],
+                );
+                status = status.push(label(tasks, 12));
             }
 
             let pending = state.pending_images();
             if pending > 0 {
-                status = status.push(label(format!("Saving {pending} image(s)\u{2026}"), 12));
+                let saving = i18n::text_with(
+                    language,
+                    "status-saving-images",
+                    &[("count", pending.into())],
+                );
+                status = status.push(label(saving, 12));
             }
 
             status = status.push(label(mode, 12));
 
             if state.tab_width > 0 {
-                status = status.push(label(format!("Tab: {} spaces", state.tab_width), 12));
+                let tab = i18n::text_with(
+                    language,
+                    "status-tab-width",
+                    &[("count", state.tab_width.into())],
+                );
+                status = status.push(label(tab, 12));
             }
 
-            status = status
-                .push(fill())
-                .push(label(if state.dirty { "Modified" } else { "" }, 12));
+            status = status.push(fill()).push(label(
+                if state.dirty {
+                    tr("status-modified")
+                } else {
+                    String::new()
+                },
+                12,
+            ));
 
             let zoom = &state.zoom_settings;
             if zoom.enabled && zoom.controls {
