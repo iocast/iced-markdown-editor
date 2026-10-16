@@ -5,6 +5,8 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-16
+
 ### Added
 - The toolbar, link bar and status bar are available in English, German, French, Spanish and Italian: `Language` (`EditorState::language`, `set_language`, `current_language`); `Language::from_tag` maps a locale such as `de-CH` to a language
 - `ImageRejection::message` gives the rejection reason as a translated sentence for the user
@@ -41,6 +43,7 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 - Examples: `editor`, `minimal`, `images_folder`, `images_embed`, `images_upload`, `images_insert`
 - Minimum Rust version 1.88
 
-[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/iocast/iced-markdown-editor/compare/v0.2.6...v0.3.0
 [0.2.6]: https://github.com/iocast/iced-markdown-editor/releases/tag/v0.2.6
