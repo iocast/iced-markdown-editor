@@ -81,7 +81,7 @@ cd examples/web && trunk serve --open                  # in the browser
 
 ## Documentation
 
-See [`docs/`](docs/README.md) and [docs.rs](https://docs.rs/iced-markdown-editor).
+See [`docs/`](docs/README.md) and [docs.rs](https://docs.rs/iced-markdown-editor). To preview them locally, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
