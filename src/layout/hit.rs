@@ -39,11 +39,18 @@ impl Layout {
         self.tasks.iter().copied().find(|task| task.contains(x, y))
     }
 
+    /// Last caret offset on a line, relative to its start. Wrapped lines end
+    /// before their break character.
+    fn line_max(&self, index: usize) -> usize {
+        let line = &self.lines[index];
+        let len = line.end - line.start;
+        if line.last || len == 0 { len } else { len - 1 }
+    }
+
     /// Position closest to `x` on the given line.
     pub fn hit_line(&self, index: usize, x: f32) -> Pos {
         let line = &self.lines[index];
-        let len = line.end - line.start;
-        let max = if line.last || len == 0 { len } else { len - 1 };
+        let max = self.line_max(index);
         let mut best = 0;
         let mut best_distance = f32::INFINITY;
         for k in 0..=max {
@@ -160,7 +167,7 @@ impl Layout {
 
     pub fn line_end(&self, pos: Pos) -> Pos {
         match self.line_for(pos) {
-            Some(index) => self.hit_line(index, 1.0e9),
+            Some(index) => Pos::new(pos.block, self.lines[index].start + self.line_max(index)),
             None => pos,
         }
     }

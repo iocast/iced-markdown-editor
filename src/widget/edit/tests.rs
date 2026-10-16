@@ -507,3 +507,28 @@ fn rendered_blocks_show_code_while_editing() {
     editor.set_mode(Mode::Source);
     assert!(!rendered(&editor, 2));
 }
+
+#[test]
+fn end_moves_to_the_end_of_the_line() {
+    let end = |text: &str, mode: Mode| {
+        let mut editor = EditorState::with_markdown(text);
+        editor.set_mode(mode);
+        let (x, y) = {
+            let layout = editor.layout.borrow();
+            (layout.lines[0].xs[0], layout.lines[0].y + 1.0)
+        };
+        editor.update(Action(Inner::Press { x, y, clicks: 1 }));
+        editor.update(Action(Inner::Key(
+            Key::Named(Named::End),
+            Modifiers::empty(),
+            None,
+        )));
+        editor.sel.head
+    };
+    assert_eq!(end("hello world\n", Mode::Wysiwyg), Pos::new(0, 11));
+    assert_eq!(end("hello world\n", Mode::Source), Pos::new(0, 11));
+    // A hard break ends the line before the break.
+    assert_eq!(end("a  \nbreak line\n", Mode::Wysiwyg), Pos::new(0, 1));
+    // Wrapped lines end before the space they break at.
+    assert_eq!(end(&"word ".repeat(80), Mode::Wysiwyg), Pos::new(0, 74));
+}

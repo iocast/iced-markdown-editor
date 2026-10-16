@@ -12,6 +12,9 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 ### Changed
 - The status bar uses the singular for one item, e.g. "1 word" instead of "1 words"
 
+### Fixed
+- `End` sometimes stopped a few characters before the end of the line
+
 ## [0.3.0] - 2026-10-11
 
 ### Added
