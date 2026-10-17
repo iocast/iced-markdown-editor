@@ -45,17 +45,17 @@ the project is, the notable changes as `•` bullets, crate and demo links, hash
 `#Rust #RustLang #iced #Markdown #OpenSource`. Mention that it also fits Bluesky only if it is
 at most 300 characters; otherwise say the bullets have to go for Bluesky.
 
-**Ko-fi** - a title line (`Title: ...`) and a friendly post of a few short paragraphs in the
-first person: what the project is, what is new and why it matters, smaller changes, links to
-the demo, crate and docs, and a closing thank-you to supporters. No hashtags, no Markdown
-(Ko-fi shows it as plain text).
+**Ko-fi** - at most 800 characters (links count in full). A friendly post of a few short
+paragraphs in the first person: what the project is, what is new and why it matters, smaller
+changes, links to the demo, crate and docs, and a closing thank-you to supporters. No title
+(Ko-fi posts have none), no hashtags, no Markdown (Ko-fi shows it as plain text).
 
 Tone: plain and friendly, no hype words ("revolutionary", "game-changing"). At most one or two
 emoji per post.
 
 ## 4. Check the length
 
-Count the short and normal versions before showing them, e.g.:
+Count all three versions before showing them. For X and Mastodon, links count as 23, e.g.:
 
 ```bash
 python -c "import re,sys; t=sys.stdin.read().rstrip(); print(len(re.sub(r'https?://\S+','x'*23,t)))" <<'EOF'
@@ -63,7 +63,8 @@ python -c "import re,sys; t=sys.stdin.read().rstrip(); print(len(re.sub(r'https?
 EOF
 ```
 
-Emoji count as 2 on X; add that by hand. Shorten until they fit.
+For Ko-fi, count plain characters (`print(len(t))`, no link substitution). Emoji count as 2
+on X; add that by hand. Shorten until they fit.
 
 ## 5. Output
 
