@@ -23,7 +23,7 @@ pre { background:#16181d; color:#e7e9ee; padding:14px 18px; border-radius:8px; o
 .card h3 { margin:0 0 6px; }
 .card p { margin:0; color:var(--muted); }
 .cta { text-align:center; padding:40px 24px 72px; }
-.cta pre { display:inline-block; }
+.cta pre { width:fit-content; max-width:100%; margin:0 auto 16px; box-sizing:border-box; }
 .page { max-width:800px; margin:40px auto; padding:0 24px; }
 iframe.full { width:100%; height:calc(100vh - 56px); border:0; display:block; }
 footer { text-align:center; color:var(--muted); padding:24px; font-size:14px; }
