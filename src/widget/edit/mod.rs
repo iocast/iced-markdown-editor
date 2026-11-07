@@ -414,7 +414,10 @@ impl EditorState {
             (Pos::new(pos.block, 0), Pos::new(pos.block, len))
         };
         self.sel = if pos < start {
-            Selection { anchor: end, head: a }
+            Selection {
+                anchor: end,
+                head: a,
+            }
         } else {
             Selection {
                 anchor: start,
