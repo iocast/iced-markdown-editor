@@ -5,6 +5,8 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-07
+
 ### Added
 - Right-click context menu: with a selection it offers cut, copy, paste, bold, italic, strikethrough, code and link; with the caret in a table it offers inserting rows above / below and columns left / right, deleting the row, column or table, and column alignment. Right-clicking outside the selection moves the caret first; `markdown_editor(..).context_menu(false)` turns the menu off
 - "Link…" in the context menu opens a link dialog in the middle of the editor, as in word processors: text to display and address, OK / Cancel and Remove link; `Enter` applies, `Escape` cancels, `Tab` switches fields
@@ -47,7 +49,8 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 - Examples: `editor`, `minimal`, `images_folder`, `images_embed`, `images_upload`, `images_insert`
 - Minimum Rust version 1.88
 
-[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.1...HEAD
+[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/iocast/iced-markdown-editor/compare/v0.2.6...v0.3.0
 [0.2.6]: https://github.com/iocast/iced-markdown-editor/releases/tag/v0.2.6
