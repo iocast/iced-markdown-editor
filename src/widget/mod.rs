@@ -337,6 +337,9 @@ pub struct EditorState {
     pub(crate) fonts: Fonts,
     pub(crate) pending: Option<Style>,
     pub(crate) goal_x: Option<f32>,
+    /// Word or block picked by a double or triple click. A drag that
+    /// follows extends by whole words or blocks and keeps it selected.
+    pub(crate) drag_unit: Option<(u8, Pos, Pos)>,
     pub(crate) undo: Vec<Snapshot>,
     pub(crate) redo: Vec<Snapshot>,
     pub(crate) last_edit: EditKind,
@@ -399,6 +402,7 @@ impl EditorState {
             fonts: Fonts::load(),
             pending: None,
             goal_x: None,
+            drag_unit: None,
             undo: Vec::new(),
             redo: Vec::new(),
             last_edit: EditKind::None,

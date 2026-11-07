@@ -81,7 +81,7 @@ impl EditorState {
             Inner::Press { x, y, clicks } => return self.on_press(x, y, clicks),
             Inner::Drag { x, y } => {
                 let pos = self.layout.borrow().hit(x, y);
-                self.sel.head = pos;
+                self.drag_to(pos);
                 self.touch();
             }
             Inner::PressOutside => self.focused = false,
@@ -387,11 +387,40 @@ impl EditorState {
                 };
             }
         }
+        self.drag_unit = (clicks >= 2).then(|| {
+            let (a, b) = self.sel.range();
+            (clicks, a, b)
+        });
         self.pending = None;
         self.goal_x = None;
         self.last_edit = EditKind::None;
         self.touch();
         Task::none()
+    }
+
+    /// Moves the selection head while the mouse is dragged. After a double
+    /// or triple click, the drag extends by whole words or blocks and the
+    /// first word or block stays selected, so a slight mouse movement
+    /// during the click does not cut it short.
+    fn drag_to(&mut self, pos: Pos) {
+        let Some((clicks, start, end)) = self.drag_unit else {
+            self.sel.head = pos;
+            return;
+        };
+        let (a, b) = if clicks == 2 {
+            self.doc.word_at(pos)
+        } else {
+            let len = self.block_len(pos.block);
+            (Pos::new(pos.block, 0), Pos::new(pos.block, len))
+        };
+        self.sel = if pos < start {
+            Selection { anchor: end, head: a }
+        } else {
+            Selection {
+                anchor: start,
+                head: b.max(end),
+            }
+        };
     }
 
     /// A right press: opens the context menu. A press outside the

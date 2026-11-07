@@ -731,3 +731,29 @@ fn link_dialog_in_source_mode_writes_markdown() {
     assert!(editor.link_dialog.is_none());
     assert_eq!(editor.markdown(), "[hello](https://)\n");
 }
+
+#[test]
+fn drag_after_double_click_keeps_the_whole_word() {
+    let mut editor = EditorState::with_markdown("a CommonMark editor\n");
+    let at = |editor: &EditorState, offset: usize| {
+        let layout = editor.layout.borrow();
+        let line = &layout.lines[0];
+        (line.xs[offset] + 1.0, line.y + 1.0)
+    };
+    let (x, y) = at(&editor, 5);
+    editor.update(Action(Inner::Press { x, y, clicks: 2 }));
+    assert_eq!(editor.sel.range(), (Pos::new(0, 2), Pos::new(0, 12)));
+
+    // A slight movement while the button is down keeps the word.
+    let (x, y) = at(&editor, 6);
+    editor.update(Action(Inner::Drag { x, y }));
+    assert_eq!(editor.sel.range(), (Pos::new(0, 2), Pos::new(0, 12)));
+
+    // Dragging further extends by whole words.
+    let (x, y) = at(&editor, 15);
+    editor.update(Action(Inner::Drag { x, y }));
+    assert_eq!(editor.sel.range(), (Pos::new(0, 2), Pos::new(0, 19)));
+    let (x, y) = at(&editor, 0);
+    editor.update(Action(Inner::Drag { x, y }));
+    assert_eq!(editor.sel.range(), (Pos::new(0, 0), Pos::new(0, 12)));
+}
