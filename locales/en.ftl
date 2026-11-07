@@ -19,12 +19,39 @@ toolbar-source = Source
 # Entry in the code block language list that means "no language".
 code-plain-text = plain text
 
+## Context menu
+
+menu-cut = Cut
+menu-copy = Copy
+menu-paste = Paste
+menu-select-all = Select all
+menu-bold = Bold
+menu-italic = Italic
+menu-strike = Strikethrough
+menu-code = Code
+menu-link = Link…
+menu-row-above = Insert row above
+menu-row-below = Insert row below
+menu-column-left = Insert column left
+menu-column-right = Insert column right
+menu-delete-row = Delete row
+menu-delete-column = Delete column
+menu-delete-table = Delete table
+menu-align-left = Align left
+menu-align-center = Center
+menu-align-right = Align right
+
 ## Link bar
 
 link-address = Link address
 link-apply = Apply
 link-remove = Remove link
 link-cancel = Cancel
+# Link dialog (opened from the context menu).
+link-dialog-insert = Insert link
+link-dialog-edit = Edit link
+link-text = Text to display
+link-ok = OK
 
 ## Status bar
 

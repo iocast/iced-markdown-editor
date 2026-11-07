@@ -16,12 +16,39 @@ toolbar-delete-column = − Col.
 toolbar-source = Sorgente
 code-plain-text = testo semplice
 
+## Context menu
+
+menu-cut = Taglia
+menu-copy = Copia
+menu-paste = Incolla
+menu-select-all = Seleziona tutto
+menu-bold = Grassetto
+menu-italic = Corsivo
+menu-strike = Barrato
+menu-code = Codice
+menu-link = Link…
+menu-row-above = Inserisci riga sopra
+menu-row-below = Inserisci riga sotto
+menu-column-left = Inserisci colonna a sinistra
+menu-column-right = Inserisci colonna a destra
+menu-delete-row = Elimina riga
+menu-delete-column = Elimina colonna
+menu-delete-table = Elimina tabella
+menu-align-left = Allinea a sinistra
+menu-align-center = Centra
+menu-align-right = Allinea a destra
+
 ## Link bar
 
 link-address = Indirizzo del link
 link-apply = Applica
 link-remove = Rimuovi link
 link-cancel = Annulla
+# Link dialog (opened from the context menu).
+link-dialog-insert = Inserisci link
+link-dialog-edit = Modifica link
+link-text = Testo da visualizzare
+link-ok = OK
 
 ## Status bar
 

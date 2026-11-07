@@ -11,14 +11,16 @@ mod table;
 #[cfg(test)]
 mod tests;
 
+use super::dialog::LinkDialog;
 use super::{Action, Command, EditKind, EditorState, Event, Inner, Mode, Snapshot};
 use crate::doc::{
     Block, BlockKind, Container, Document, Flag, Leaf, Link, ListInfo, Pos, Selection, Style,
 };
 use crate::images::{self, ImageSource};
-use iced::Task;
 use iced::keyboard::{Key, Modifiers, key::Named};
 use iced::mouse::ScrollDelta;
+use iced::widget::{Id, operation};
+use iced::{Point, Task};
 use list::{item_depth, nest_item, quote_depth, unnest_item, wrap_list, wrap_quote};
 use std::sync::Arc;
 use table::table_header;
@@ -66,7 +68,14 @@ pub(crate) fn builtin_command(key: &str, shift: bool) -> Option<Command> {
 
 impl EditorState {
     pub(crate) fn apply(&mut self, inner: Inner) -> Task<Action> {
+        // Anything but the blink timer and modifier keys closes the menu.
+        let menu_open = self.context_menu.is_some();
+        if !matches!(inner, Inner::Blink | Inner::Modifiers(_)) {
+            self.context_menu = None;
+        }
         match inner {
+            // Escape only closes the menu.
+            Inner::Key(Key::Named(Named::Escape), ..) if menu_open => {}
             Inner::Key(key, modifiers, text) => return self.on_key(key, modifiers, text),
             Inner::Modifiers(modifiers) => self.modifiers = modifiers,
             Inner::Press { x, y, clicks } => return self.on_press(x, y, clicks),
@@ -76,6 +85,7 @@ impl EditorState {
                 self.touch();
             }
             Inner::PressOutside => self.focused = false,
+            Inner::ContextMenu { at, x, y } => self.open_context_menu(at, x, y),
             Inner::Blink => {
                 if self.last_activity.elapsed() < super::BLINK {
                     self.caret_on = true;
@@ -111,12 +121,28 @@ impl EditorState {
                 }
             }
             Inner::Command(command) => return self.command(command),
-            Inner::LinkUrl(url) => self.link_url = Some(url),
+            Inner::LinkUrl(url) => {
+                if self.link_url.is_some() {
+                    self.link_url = Some(url);
+                }
+            }
+            Inner::LinkDialog => return self.link_dialog_open(),
+            Inner::LinkText(text) => {
+                if let Some(display) = self
+                    .link_dialog
+                    .as_mut()
+                    .and_then(|dialog| dialog.text.as_mut())
+                {
+                    *display = text;
+                }
+            }
+            Inner::LinkTab => return self.link_dialog_tab(),
             Inner::LinkApply => return self.link_apply(false),
             Inner::LinkRemove => return self.link_apply(true),
             Inner::LinkCancel => {
                 self.link_url = None;
                 self.link_range = None;
+                self.link_dialog = None;
                 self.focused = true;
             }
             Inner::Paste(Some(text)) => {
@@ -366,6 +392,25 @@ impl EditorState {
         self.last_edit = EditKind::None;
         self.touch();
         Task::none()
+    }
+
+    /// A right press: opens the context menu. A press outside the
+    /// selection moves the caret there first.
+    fn open_context_menu(&mut self, at: Point, x: f32, y: f32) {
+        if self.link_url.is_some() {
+            return;
+        }
+        self.focused = true;
+        let pos = self.layout.borrow().hit(x, y);
+        let (a, b) = self.sel.range();
+        if a == b || pos < a || pos > b {
+            self.sel = Selection::caret(pos);
+            self.pending = None;
+            self.goal_x = None;
+            self.last_edit = EditKind::None;
+        }
+        self.context_menu = Some(at);
+        self.touch();
     }
 
     // ----------------------------------------------------------------
@@ -1190,25 +1235,105 @@ impl EditorState {
         Task::none()
     }
 
+    /// Opens the link dialog for the selection, or the word at the caret.
+    /// Its address field gets the keyboard focus.
+    fn link_dialog_open(&mut self) -> Task<Action> {
+        if self.mode == Mode::Source {
+            return self.command(Command::EditLink);
+        }
+        self.focused = true;
+        let (mut a, mut b) = self.sel.range();
+        if a == b {
+            (a, b) = self.doc.word_at(a);
+        }
+        let existing = self.doc.link_at(a).map(|link| link.url.clone());
+        let block = &self.doc.blocks[a.block];
+        // Retyping would lose images, raw HTML or paragraph breaks.
+        let retypable = a.block == b.block
+            && !block.leaf.is_plain()
+            && block.styles[a.offset..b.offset]
+                .iter()
+                .all(|style| style.image.is_none() && !style.html);
+        let original = self.doc.plain_text(a, b);
+
+        let dialog = LinkDialog {
+            text: retypable.then(|| original.clone()),
+            original,
+            editing: existing.is_some(),
+            text_id: Id::unique(),
+            url_id: Id::unique(),
+        };
+        let url_id = dialog.url_id.clone();
+        self.sel = Selection { anchor: a, head: b };
+        self.link_range = Some((a, b));
+        self.link_url = Some(existing.unwrap_or_else(|| "https://".to_string()));
+        self.link_dialog = Some(dialog);
+        operation::focus(url_id.clone()).chain(operation::select_all(url_id))
+    }
+
+    /// Tab in the link dialog: focus the other field.
+    fn link_dialog_tab(&self) -> Task<Action> {
+        let Some(dialog) = &self.link_dialog else {
+            return Task::none();
+        };
+        let url_id = dialog.url_id.clone();
+        if dialog.text.is_none() {
+            return operation::focus(url_id);
+        }
+        let text_id = dialog.text_id.clone();
+        operation::is_focused(text_id.clone()).then(move |on_text| {
+            let next = if on_text {
+                url_id.clone()
+            } else {
+                text_id.clone()
+            };
+            operation::focus(next.clone()).chain(operation::select_all(next))
+        })
+    }
+
     fn link_apply(&mut self, remove: bool) -> Task<Action> {
         let url = self.link_url.take().unwrap_or_default();
+        let dialog = self.link_dialog.take();
         let Some((a, b)) = self.link_range.take() else {
             return Task::none();
         };
         self.focused = true;
-        let a = self.doc.clamp(a);
-        let b = self.doc.clamp(b);
+        let mut a = self.doc.clamp(a);
+        let mut b = self.doc.clamp(b);
         let url = url.trim().to_string();
         let title = self.doc.link_at(a).and_then(|link| link.title.clone());
         let link: Option<Arc<Link>> = if remove || url.is_empty() || url == "https://" {
             None
         } else {
-            Some(Link::new(url, title))
+            Some(Link::new(url.clone(), title))
         };
 
+        // New text to display (dialog): typed text, or the address when
+        // there was nothing to link.
+        let text = dialog
+            .filter(|_| link.is_some())
+            .and_then(|dialog| match dialog.text {
+                Some(text) if !text.trim().is_empty() && text != dialog.original => Some(text),
+                Some(_) if a == b => Some(url.clone()),
+                _ => None,
+            });
+        if text.is_none() && a == b {
+            return Task::none();
+        }
+
         self.begin_edit(EditKind::Other);
+        if let Some(text) = text {
+            let style = if a < b {
+                self.doc.blocks[a.block].styles[a.offset].clone()
+            } else {
+                self.typing_style()
+            };
+            a = self.doc.delete_range(a, b);
+            b = self.doc.insert_text(a, &text, &style);
+        }
         self.doc.set_link(a, b, link);
         self.sel = Selection::caret(b);
+        self.pending = None;
         self.after_edit()
     }
 

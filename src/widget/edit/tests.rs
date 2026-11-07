@@ -532,3 +532,202 @@ fn end_moves_to_the_end_of_the_line() {
     // Wrapped lines end before the space they break at.
     assert_eq!(end(&"word ".repeat(80), Mode::Wysiwyg), Pos::new(0, 74));
 }
+
+/// Document coordinates inside the character at `pos`.
+fn point_at(editor: &EditorState, pos: Pos) -> (f32, f32) {
+    let (x, y, height) = editor.layout.borrow().caret(pos).unwrap();
+    (x + 1.0, y + height / 2.0)
+}
+
+fn right_click(editor: &mut EditorState, pos: Pos) {
+    let (x, y) = point_at(editor, pos);
+    editor.update(Action(Inner::ContextMenu {
+        at: iced::Point::new(5.0, 5.0),
+        x,
+        y,
+    }));
+}
+
+#[test]
+fn right_click_in_the_selection_keeps_it() {
+    let mut editor = EditorState::with_markdown("hello world\n");
+    let selection = Selection {
+        anchor: Pos::new(0, 0),
+        head: Pos::new(0, 5),
+    };
+    editor.sel = selection;
+    right_click(&mut editor, Pos::new(0, 2));
+    assert_eq!(editor.sel, selection);
+    assert!(editor.context_menu.is_some());
+    assert!(editor.focused);
+
+    // A menu entry runs its command and closes the menu.
+    editor.execute(Command::ToggleBold);
+    assert!(editor.context_menu.is_none());
+    assert_eq!(editor.markdown(), "**hello** world\n");
+}
+
+#[test]
+fn right_click_outside_the_selection_moves_the_caret() {
+    let mut editor = EditorState::with_markdown("hello world\n");
+    editor.sel = Selection {
+        anchor: Pos::new(0, 0),
+        head: Pos::new(0, 3),
+    };
+    right_click(&mut editor, Pos::new(0, 8));
+    assert_eq!(editor.sel, Selection::caret(Pos::new(0, 8)));
+    assert!(editor.context_menu.is_some());
+}
+
+#[test]
+fn escape_closes_the_menu_only() {
+    let mut editor = EditorState::with_markdown("hello world\n");
+    let selection = Selection {
+        anchor: Pos::new(0, 0),
+        head: Pos::new(0, 5),
+    };
+    editor.sel = selection;
+    right_click(&mut editor, Pos::new(0, 1));
+    let escape = Key::Named(Named::Escape);
+    editor.update(Action(Inner::Key(escape.clone(), Modifiers::empty(), None)));
+    assert!(editor.context_menu.is_none());
+    assert_eq!(editor.sel, selection);
+    // Without a menu, Escape collapses the selection as before.
+    editor.update(Action(Inner::Key(escape, Modifiers::empty(), None)));
+    assert_eq!(editor.sel, Selection::caret(Pos::new(0, 5)));
+}
+
+#[test]
+fn scrolling_and_clicking_close_the_menu() {
+    let mut editor = EditorState::with_markdown("hello world\n");
+    right_click(&mut editor, Pos::new(0, 1));
+    editor.update(Action(Inner::Blink));
+    assert!(editor.context_menu.is_some());
+    editor.update(Action(Inner::ScrollBy { dx: 0.0, dy: 10.0 }));
+    assert!(editor.context_menu.is_none());
+
+    right_click(&mut editor, Pos::new(0, 1));
+    let (x, y) = point_at(&editor, Pos::new(0, 3));
+    editor.update(Action(Inner::Press { x, y, clicks: 1 }));
+    assert!(editor.context_menu.is_none());
+}
+
+#[test]
+fn right_click_in_a_table_cell_then_insert_column_left() {
+    let mut editor = EditorState::with_markdown("| a | b |\n| - | - |\n| 1 | 2 |\n");
+    right_click(&mut editor, Pos::new(1, 0));
+    assert_eq!(editor.sel.head.block, 1);
+    editor.execute(Command::InsertColumn { right: false });
+    assert_eq!(
+        editor.markdown(),
+        "| a   |     | b   |\n| --- | --- | --- |\n| 1   |     | 2   |\n"
+    );
+}
+
+fn select(editor: &mut EditorState, anchor: Pos, head: Pos) {
+    editor.sel = Selection { anchor, head };
+}
+
+fn link_dialog(editor: &mut EditorState) -> &crate::widget::dialog::LinkDialog {
+    editor.update(Action(Inner::LinkDialog));
+    editor.link_dialog.as_ref().expect("dialog is open")
+}
+
+#[test]
+fn link_dialog_links_the_selection() {
+    let mut editor = EditorState::with_markdown("hello world\n");
+    select(&mut editor, Pos::new(0, 0), Pos::new(0, 5));
+    let dialog = link_dialog(&mut editor);
+    assert_eq!(dialog.text.as_deref(), Some("hello"));
+    assert!(!dialog.editing);
+    assert_eq!(editor.link_url.as_deref(), Some("https://"));
+    editor.update(Action(Inner::LinkUrl("https://example.org".into())));
+    editor.update(Action(Inner::LinkApply));
+    assert!(editor.link_dialog.is_none());
+    assert!(editor.link_url.is_none());
+    assert_eq!(editor.markdown(), "[hello](https://example.org) world\n");
+}
+
+#[test]
+fn link_dialog_changes_the_text_to_display() {
+    let mut editor = EditorState::with_markdown("**hello** world\n");
+    select(&mut editor, Pos::new(0, 0), Pos::new(0, 5));
+    link_dialog(&mut editor);
+    editor.update(Action(Inner::LinkText("hi there".into())));
+    editor.update(Action(Inner::LinkUrl("https://example.org".into())));
+    editor.update(Action(Inner::LinkApply));
+    assert_eq!(
+        editor.markdown(),
+        "[**hi there**](https://example.org) world\n"
+    );
+    editor.execute(Command::Undo);
+    assert_eq!(editor.markdown(), "**hello** world\n");
+}
+
+#[test]
+fn link_dialog_edits_and_removes_a_link() {
+    let mut editor = EditorState::with_markdown("[hello](https://a.org) world\n");
+    select(&mut editor, Pos::new(0, 1), Pos::new(0, 3));
+    let dialog = link_dialog(&mut editor);
+    assert!(dialog.editing);
+    // The word at the caret is not widened, the selection is used as is.
+    assert_eq!(dialog.text.as_deref(), Some("el"));
+    assert_eq!(editor.link_url.as_deref(), Some("https://a.org"));
+
+    select(&mut editor, Pos::new(0, 0), Pos::new(0, 5));
+    link_dialog(&mut editor);
+    editor.update(Action(Inner::LinkUrl("https://b.org".into())));
+    editor.update(Action(Inner::LinkApply));
+    assert_eq!(editor.markdown(), "[hello](https://b.org) world\n");
+
+    select(&mut editor, Pos::new(0, 0), Pos::new(0, 5));
+    link_dialog(&mut editor);
+    editor.update(Action(Inner::LinkRemove));
+    assert_eq!(editor.markdown(), "hello world\n");
+}
+
+#[test]
+fn link_dialog_cancel_changes_nothing() {
+    let mut editor = EditorState::with_markdown("hello world\n");
+    select(&mut editor, Pos::new(0, 0), Pos::new(0, 5));
+    link_dialog(&mut editor);
+    editor.update(Action(Inner::LinkUrl("https://example.org".into())));
+    editor.update(Action(Inner::LinkCancel));
+    assert!(editor.link_dialog.is_none());
+    assert!(editor.link_url.is_none());
+    assert_eq!(editor.markdown(), "hello world\n");
+    assert!(!editor.can_undo());
+}
+
+#[test]
+fn link_dialog_keeps_text_it_cannot_retype() {
+    let mut editor = EditorState::with_markdown("one\n\ntwo\n");
+    select(&mut editor, Pos::new(0, 1), Pos::new(1, 2));
+    assert!(link_dialog(&mut editor).text.is_none());
+    editor.update(Action(Inner::LinkText("ignored".into())));
+    editor.update(Action(Inner::LinkUrl("https://example.org".into())));
+    editor.update(Action(Inner::LinkApply));
+    assert_eq!(
+        editor.markdown(),
+        "o[ne](https://example.org)\n\n[tw](https://example.org)o\n"
+    );
+}
+
+#[test]
+fn link_dialog_without_text_inserts_the_address() {
+    let mut editor = EditorState::with_markdown("");
+    assert_eq!(link_dialog(&mut editor).text.as_deref(), Some(""));
+    editor.update(Action(Inner::LinkUrl("https://example.org".into())));
+    editor.update(Action(Inner::LinkApply));
+    // Text equal to the address is written as an autolink.
+    assert_eq!(editor.markdown(), "<https://example.org>\n");
+}
+
+#[test]
+fn link_dialog_in_source_mode_writes_markdown() {
+    let mut editor = EditorState::with_markdown("hello\n").mode(Mode::Source);
+    select(&mut editor, Pos::new(0, 0), Pos::new(0, 5));
+    editor.update(Action(Inner::LinkDialog));
+    assert!(editor.link_dialog.is_none());
+    assert_eq!(editor.markdown(), "[hello](https://)\n");
+}

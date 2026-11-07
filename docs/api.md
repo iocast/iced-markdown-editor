@@ -3,7 +3,7 @@
 | Item | Purpose |
 |---|---|
 | `EditorState` | Document, selection, history, settings |
-| `markdown_editor(&state)` | The widget (`.toolbar(bool)`, `.status_bar(bool)`, `.view()`) |
+| `markdown_editor(&state)` | The widget (`.toolbar(bool)`, `.status_bar(bool)`, `.context_menu(bool)`, `.view()`) |
 | `Action`, `Output`, `Event`, `Command` | Message flow |
 | `Paper`, `PageSize`, `Margins`, `Measure` | Page setup |
 | `ZoomSettings`, `KeyBinding` | Zoom |

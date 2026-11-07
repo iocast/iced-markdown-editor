@@ -5,6 +5,10 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 
 ## [Unreleased]
 
+### Added
+- Right-click context menu: with a selection it offers cut, copy, paste, bold, italic, strikethrough, code and link; with the caret in a table it offers inserting rows above / below and columns left / right, deleting the row, column or table, and column alignment. Right-clicking outside the selection moves the caret first; `markdown_editor(..).context_menu(false)` turns the menu off
+- "Link…" in the context menu opens a link dialog in the middle of the editor, as in word processors: text to display and address, OK / Cancel and Remove link; `Enter` applies, `Escape` cancels, `Tab` switches fields
+
 ## [0.3.1] - 2026-10-16
 
 ### Added

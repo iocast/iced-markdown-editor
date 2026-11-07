@@ -13,8 +13,12 @@
 //! * `source`: Markdown source mode.
 //! * `view`: the widget (page canvas, link bar, status bar).
 //! * `toolbar`: the built-in toolbar.
+//! * `menu`: the context menu (right mouse button).
+//! * `dialog`: the link dialog opened from the context menu.
 
+mod dialog;
 mod edit;
+mod menu;
 mod source;
 mod toolbar;
 mod view;
@@ -38,7 +42,7 @@ use crate::zoom::ZoomSettings;
 use iced::keyboard::{Key, Modifiers};
 use iced::mouse::ScrollDelta;
 use iced::widget::canvas;
-use iced::{Color, Size, Subscription, Task};
+use iced::{Color, Point, Size, Subscription, Task};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
@@ -91,6 +95,13 @@ pub(crate) enum Inner {
         y: f32,
     },
     PressOutside,
+    /// Right press: `at` in widget coordinates, `x` / `y` in document
+    /// coordinates.
+    ContextMenu {
+        at: Point,
+        x: f32,
+        y: f32,
+    },
     Blink,
     /// Scroll by a distance in pixels.
     ScrollBy {
@@ -106,6 +117,12 @@ pub(crate) enum Inner {
     Wheel(ScrollDelta),
     Command(Command),
     LinkUrl(String),
+    /// Opens the link dialog for the selection (context menu).
+    LinkDialog,
+    /// Text to display, typed in the link dialog.
+    LinkText(String),
+    /// Tab in the link dialog: the other field.
+    LinkTab,
     LinkApply,
     LinkRemove,
     LinkCancel,
@@ -312,6 +329,11 @@ pub struct EditorState {
     pub(crate) caret_on: bool,
     pub(crate) link_url: Option<String>,
     pub(crate) link_range: Option<(Pos, Pos)>,
+    /// Open link dialog. The address is in `link_url`, the range in
+    /// `link_range`; without a dialog `link_url` shows the link bar.
+    pub(crate) link_dialog: Option<dialog::LinkDialog>,
+    /// Open context menu: its anchor in widget coordinates.
+    pub(crate) context_menu: Option<Point>,
     pub(crate) fonts: Fonts,
     pub(crate) pending: Option<Style>,
     pub(crate) goal_x: Option<f32>,
@@ -372,6 +394,8 @@ impl EditorState {
             caret_on: true,
             link_url: None,
             link_range: None,
+            link_dialog: None,
+            context_menu: None,
             fonts: Fonts::load(),
             pending: None,
             goal_x: None,
@@ -1125,6 +1149,8 @@ impl EditorState {
         self.last_edit = EditKind::None;
         self.link_url = None;
         self.link_range = None;
+        self.link_dialog = None;
+        self.context_menu = None;
     }
 
     pub(crate) fn touch(&mut self) {

@@ -1,17 +1,18 @@
-//! The widget: page canvas (with its own scrolling), toolbar, link bar and
-//! status bar. All labels use the bundled fonts, so they render in the
+//! The widget: page canvas (with its own scrolling), toolbar, link bar,
+//! context menu and status bar. All labels use the bundled fonts, so they render in the
 //! browser too.
 
 use super::edit::builtin_command;
 use super::toolbar::{self, fill};
 use super::{Action, Command, EditorState, Inner, Mode};
+use super::{dialog, menu};
 use crate::fonts;
 use crate::i18n;
 use crate::render;
 use iced::keyboard::{self, Key, Modifiers, key::Named};
 use iced::mouse::{self, ScrollDelta};
 use iced::widget::canvas::{self, Canvas, Frame, Geometry};
-use iced::widget::{Text, button, column, container, row, text, text_input};
+use iced::widget::{Stack, Text, button, column, container, row, text, text_input};
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme,
     Vector,
@@ -98,6 +99,8 @@ fn bars(editor: &EditorState, size: Size) -> (Option<Bar>, Option<Bar>) {
 
 struct Page<'a> {
     state: &'a EditorState,
+    /// Right press opens the context menu.
+    context_menu: bool,
 }
 
 fn publish(action: Inner) -> Option<canvas::Action<Action>> {
@@ -186,6 +189,22 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                     Drag::Select
                 };
                 publish(Inner::Press { x, y, clicks })
+            }
+            canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right))
+                if self.context_menu && page.drag == Drag::None =>
+            {
+                let point = cursor.position_in(bounds)?;
+                let (vertical, horizontal) = bars(editor, size);
+                if vertical.is_some_and(|bar| bar.track.contains(point))
+                    || horizontal.is_some_and(|bar| bar.track.contains(point))
+                {
+                    return None;
+                }
+                publish(Inner::ContextMenu {
+                    at: point,
+                    x: point.x + sx,
+                    y: point.y + sy,
+                })
             }
             canvas::Event::Mouse(mouse::Event::CursorMoved { .. }) => {
                 let position = cursor.position()?;
@@ -446,6 +465,7 @@ pub struct MarkdownEditor<'a> {
     state: &'a EditorState,
     toolbar: bool,
     status_bar: bool,
+    context_menu: bool,
     width: Length,
     height: Length,
 }
@@ -456,6 +476,7 @@ pub fn markdown_editor(state: &EditorState) -> MarkdownEditor<'_> {
         state,
         toolbar: true,
         status_bar: true,
+        context_menu: true,
         width: Length::Fill,
         height: Length::Fill,
     }
@@ -471,6 +492,13 @@ impl<'a> MarkdownEditor<'a> {
     /// Shows or hides the status bar (default: shown).
     pub fn status_bar(mut self, show: bool) -> Self {
         self.status_bar = show;
+        self
+    }
+
+    /// Enables or disables the context menu on the right mouse button
+    /// (default: enabled).
+    pub fn context_menu(mut self, enabled: bool) -> Self {
+        self.context_menu = enabled;
         self
     }
 
@@ -513,7 +541,11 @@ impl<'a> MarkdownEditor<'a> {
             );
         }
 
-        if let Some(url) = &state.link_url {
+        if let Some(url) = state
+            .link_url
+            .as_ref()
+            .filter(|_| state.link_dialog.is_none())
+        {
             let link_bar = container(
                 row![
                     label(tr("link-address"), 12).color(palette.muted),
@@ -547,10 +579,21 @@ impl<'a> MarkdownEditor<'a> {
             content = content.push(link_bar);
         }
 
-        let page = Canvas::new(Page { state })
+        let page = Canvas::new(Page {
+            state,
+            context_menu: self.context_menu,
+        })
+        .width(Length::Fill)
+        .height(Length::Fill);
+        // Always a stack, so the canvas keeps its state when the menu opens.
+        let mut layers = Stack::new()
             .width(Length::Fill)
-            .height(Length::Fill);
-        content = content.push(page);
+            .height(Length::Fill)
+            .push(page);
+        if let Some(at) = state.context_menu.filter(|_| self.context_menu) {
+            layers = layers.push(menu::view(state, at));
+        }
+        content = content.push(layers);
 
         if self.status_bar {
             let mode = match state.mode {
@@ -651,7 +694,18 @@ impl<'a> MarkdownEditor<'a> {
             );
         }
 
-        container(content)
+        // Always a stack, so the editor keeps its state when the dialog opens.
+        let mut editor = Stack::new()
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .push(content.width(Length::Fill).height(Length::Fill));
+        if let (Some(link), Some(url)) = (&state.link_dialog, &state.link_url) {
+            for layer in dialog::view(state, link, url) {
+                editor = editor.push(layer);
+            }
+        }
+
+        container(editor)
             .width(self.width)
             .height(self.height)
             .into()

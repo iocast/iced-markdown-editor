@@ -15,6 +15,8 @@
 | `Ctrl` + `+` / `-` / `0`, `Ctrl` + wheel | Zoom |
 | Wheel, `Shift` + wheel | Scroll vertically / horizontally |
 | Drag the scrollbars | Scroll |
+| Right-click | Context menu: cut, copy, paste and formatting for a selection; insert / delete rows and columns and align columns in a table |
+| Link dialog (context menu) | `Enter` OK, `Escape` cancel, `Tab` next field |
 
 Type `| Name | Age |` and press Enter to turn the line into a table.
 

@@ -36,7 +36,7 @@ imagesize = { version = "^0.15", optional = true }
 # Desktop only.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 iced = { version = "^0.14", features = ["tokio"] }
-arboard = { version = "^3.6", optional = true }
+arboard = { version = "^3.7", optional = true }
 png = { version = "^0.18", optional = true }
 
 [dev-dependencies]
@@ -44,7 +44,7 @@ fluent-syntax = "^0.12"
 rfd = "^0.17"
 serde = { version = "^1.0", features = ["derive"] }
 serde_json = "^1.0"
-tokio = { version = "^1.53", features = ["time"] }
+tokio = { version = "^1.54", features = ["time"] }
 
 [[example]]
 name = "editor"
