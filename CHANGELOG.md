@@ -5,6 +5,8 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-18
+
 ### Changed
 - **Breaking:** the document, Markdown, layout and editing logic moved to the new `markdown-editor-core` crate, which is shared with `frust-markdown-editor`. `EditorState` dereferences to its `EditorCore`
 - **Breaking:** `BlockRenderer::draw` receives the core's `extension::Frame` instead of Iced's canvas frame
@@ -61,7 +63,8 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 - Examples: `editor`, `minimal`, `images_folder`, `images_embed`, `images_upload`, `images_insert`
 - Minimum Rust version 1.88
 
-[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.3...HEAD
+[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.0...v0.3.1
