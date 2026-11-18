@@ -4,3 +4,4 @@ target
 /website/public
 /website/static/demo
 example-notes/
+/.cargo/config.toml

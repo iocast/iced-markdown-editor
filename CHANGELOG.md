@@ -5,6 +5,13 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 
 ## [Unreleased]
 
+### Changed
+- **Breaking:** the document, Markdown, layout and editing logic moved to the new `markdown-editor-core` crate, which is shared with `frust-markdown-editor`. `EditorState` dereferences to its `EditorCore`
+- **Breaking:** `BlockRenderer::draw` receives the core's `extension::Frame` instead of Iced's canvas frame
+- **Breaking:** `Palette`, `highlight::Color` and `KeyBinding` use the core's `Color`, `Key` and `Modifiers`; `color_from_iced` converts an Iced colour
+- **Breaking:** `EditorStyle::from_theme` needs the `FromTheme` trait in scope, and `ImageRejection::message` needs `ImageRejectionMessage`
+- Images are decoded when they are loaded; an image that cannot be decoded is no longer shown
+
 ## [0.3.3] - 2026-11-07
 
 ### Fixed

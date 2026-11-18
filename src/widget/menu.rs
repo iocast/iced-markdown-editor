@@ -6,7 +6,7 @@
 
 use super::toolbar::button_style;
 use super::{Action, Command, EditorState, Inner, Mode};
-use crate::doc::ColumnAlign;
+use crate::convert;
 use crate::fonts;
 use crate::i18n;
 use iced::widget::text::Wrapping;
@@ -14,6 +14,7 @@ use iced::widget::{button, column, container, opaque, pin, row, text};
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Point, Shadow, Size, Theme, Vector,
 };
+use markdown_editor_core::doc::ColumnAlign;
 
 /// Width of the menu.
 const WIDTH: f32 = 280.0;
@@ -140,7 +141,7 @@ fn place(at: Point, size: Size, area: Size) -> Point {
 /// The menu layer: covers the page, the menu is pinned at `at` (widget
 /// coordinates of the page).
 pub(crate) fn view(state: &EditorState, at: Point) -> Element<'static, Action> {
-    let palette = state.style.palette;
+    let palette = convert::palette(&state.style.palette);
     let entries = entries(state);
     let visual = state.mode == Mode::Wysiwyg;
 
@@ -152,7 +153,11 @@ pub(crate) fn view(state: &EditorState, at: Point) -> Element<'static, Action> {
                 Entry::Separator => SEPARATOR,
             })
             .sum::<f32>();
-    let position = place(at, Size::new(WIDTH, height), state.viewport.get());
+    let position = place(
+        at,
+        Size::new(WIDTH, height),
+        convert::size(state.viewport.get()),
+    );
 
     let mut list = column![].width(Length::Fill);
     for entry in entries {

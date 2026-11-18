@@ -2,10 +2,11 @@
 //! context menu and status bar. All labels use the bundled fonts, so they render in the
 //! browser too.
 
-use super::edit::builtin_command;
 use super::toolbar::{self, fill};
 use super::{Action, Command, EditorState, Inner, Mode};
 use super::{dialog, menu};
+use crate::convert;
+use crate::draw;
 use crate::fonts;
 use crate::i18n;
 use crate::render;
@@ -17,6 +18,8 @@ use iced::{
     Alignment, Background, Border, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme,
     Vector,
 };
+use markdown_editor_core::draw::Frame as CoreFrame;
+use markdown_editor_core::editor::builtin_command;
 use std::time::Duration;
 use web_time::Instant;
 
@@ -201,7 +204,7 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                     return None;
                 }
                 publish(Inner::ContextMenu {
-                    at: point,
+                    at: convert::point_from_iced(point),
                     x: point.x + sx,
                     y: point.y + sy,
                 })
@@ -258,7 +261,7 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                 }
                 let settings = &editor.zoom_settings;
                 if page.modifiers.command() && settings.enabled && settings.mouse_wheel {
-                    return publish(Inner::Wheel(*delta));
+                    return publish(Inner::Wheel(convert::scroll_delta(*delta)));
                 }
                 let (mut dx, mut dy) = match *delta {
                     ScrollDelta::Lines { x, y } => (-x * LINE, -y * LINE),
@@ -272,7 +275,7 @@ impl<'a> canvas::Program<Action> for Page<'a> {
             canvas::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
                 page.modifiers = *modifiers;
                 Some(canvas::Action::publish(Action(Inner::Modifiers(
-                    *modifiers,
+                    convert::modifiers(*modifiers),
                 ))))
             }
             canvas::Event::Keyboard(keyboard::Event::KeyPressed {
@@ -288,11 +291,11 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                 let modifiers = *modifiers;
 
                 if editor.focused || cursor.is_over(bounds) {
-                    if let Some(command) =
-                        editor
-                            .zoom_settings
-                            .command_for(key, modified_key, modifiers)
-                    {
+                    if let Some(command) = editor.zoom_settings.command_for(
+                        &convert::key(key),
+                        &convert::key(modified_key),
+                        convert::modifiers(modifiers),
+                    ) {
                         return Some(canvas::Action::publish(Action::from(command)).and_capture());
                     }
                 }
@@ -338,7 +341,11 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                 }
 
                 let text = text.as_ref().map(|text| text.to_string());
-                publish(Inner::Key(key.clone(), modifiers, text))
+                publish(Inner::Key(
+                    convert::key(key),
+                    convert::modifiers(modifiers),
+                    text,
+                ))
             }
             _ => None,
         }
@@ -354,42 +361,41 @@ impl<'a> canvas::Program<Action> for Page<'a> {
     ) -> Vec<Geometry> {
         let editor = self.state;
         let size = bounds.size();
-        editor.sync_viewport(size);
+        let core_size = convert::size_from_iced(size);
+        editor.sync_viewport(core_size);
         let (sx, sy) = editor.clamped_scroll();
-        let palette = editor.style.palette;
-        let code_colors = |index: usize| editor.code_colors(index);
-        let custom = |frame: &mut Frame, index: usize, bounds: Rectangle, available: Size| {
-            editor.draw_block(frame, index, bounds, available)
-        };
+        let palette = convert::palette(&editor.style.palette);
+        let core_palette = editor.style.palette;
+        let scroll = Vector::new(-sx, -sy);
+        let visible = crate::Rectangle::new(crate::Point::new(sx, sy), core_size);
+        let new_frame = || CoreFrame::new(core_size, fonts::shared().clone());
 
+        // The content is drawn again when the layout or the scroll position
+        // changes.
+        let drawn = (editor.layout_generation.get(), sx.to_bits(), sy.to_bits());
+        if editor.drawn.replace(Some(drawn)) != Some(drawn) {
+            editor.cache.borrow_mut().clear();
+        }
+        let scene = editor.content_scene();
         let content = {
             let layout = editor.layout.borrow();
             editor.cache.borrow().draw(renderer, size, |frame| {
-                render::draw_desk(frame, &layout, &palette, size);
-                frame.translate(Vector::new(-sx, -sy));
-                render::draw_pages(frame, &layout, &palette);
-                render::draw_document(
-                    frame,
-                    &editor.doc,
-                    &layout,
-                    &palette,
-                    &code_colors,
-                    &custom,
-                    (sy, sy + size.height),
-                );
+                let mut desk = new_frame();
+                render::draw_desk(&mut desk, &layout, &core_palette, core_size);
+                draw::replay(desk.ops(), frame, None, Vector::ZERO);
+                draw::replay(&scene, frame, Some(visible), scroll);
             })
         };
 
         let mut overlay = Frame::new(renderer, size);
         {
             let layout = editor.layout.borrow();
-            overlay.with_save(|frame| {
-                frame.translate(Vector::new(-sx, -sy));
-                render::draw_selection(frame, &layout, editor.sel, &palette);
-                if editor.focused && editor.caret_on && editor.link_url.is_none() {
-                    render::draw_caret(frame, &layout, editor.sel, &palette);
-                }
-            });
+            let mut marks = new_frame();
+            render::draw_selection(&mut marks, &layout, editor.sel, &core_palette);
+            if editor.focused && editor.caret_on && editor.link_url.is_none() {
+                render::draw_caret(&mut marks, &layout, editor.sel, &core_palette);
+            }
+            draw::replay(marks.ops(), &mut overlay, Some(visible), scroll);
         }
 
         let hovered = cursor.position_in(bounds);
@@ -515,7 +521,7 @@ impl<'a> MarkdownEditor<'a> {
     /// Builds the widget element.
     pub fn view(self) -> Element<'a, Action> {
         let state = self.state;
-        let palette = state.style.palette;
+        let palette = convert::palette(&state.style.palette);
 
         let bar_style = move |_: &Theme| container::Style {
             background: Some(Background::Color(palette.toolbar_background)),
@@ -591,7 +597,7 @@ impl<'a> MarkdownEditor<'a> {
             .height(Length::Fill)
             .push(page);
         if let Some(at) = state.context_menu.filter(|_| self.context_menu) {
-            layers = layers.push(menu::view(state, at));
+            layers = layers.push(menu::view(state, convert::point(at)));
         }
         content = content.push(layers);
 

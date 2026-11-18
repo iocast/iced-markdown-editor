@@ -4,12 +4,12 @@
 //! no system fonts exist (the browser).
 
 use super::{Action, Command, EditorState, Formatting, Mode};
-use crate::doc::{BlockKind, ColumnAlign};
+use crate::convert::{self, Palette};
 use crate::fonts;
 use crate::i18n::{self, Language};
-use crate::style::Palette;
 use iced::widget::{button, pick_list, row, text};
 use iced::{Alignment, Background, Border, Color, Element, Font, Length};
+use markdown_editor_core::doc::{BlockKind, ColumnAlign};
 
 /// An empty element that takes all remaining width.
 pub(crate) fn fill<'a>() -> Element<'a, Action> {
@@ -114,7 +114,7 @@ pub(crate) fn view(state: &EditorState) -> Element<'static, Action> {
     let visual = state.mode == Mode::Wysiwyg;
     let block = format.block;
     let ui = fonts::SANS;
-    let p = state.style.palette;
+    let p = convert::palette(&state.style.palette);
     let task = format.task.is_some();
     let set = |kind| Some(Command::SetBlock(kind));
     let tr = |id| i18n::text(state.language, id);

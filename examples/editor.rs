@@ -12,9 +12,10 @@ use iced::keyboard::{self, Key, key::Named};
 use iced::widget::{button, column, container, pick_list, row, text};
 use iced::{Alignment, Element, Length, Subscription, Task, Theme, window};
 use iced_markdown_editor::{
-    Action, CodeHighlighter, Command, EditorState, EditorStyle, Event, FONTS, ImageId,
-    ImageSettings, KeyBinding, Language, Margins, Measure, Orientation, Output, PageSize, Paper,
-    PastedImage, SyntectHighlighter, ZoomSettings, ZoomShortcuts, markdown_editor,
+    Action, CodeHighlighter, Command, EditorState, EditorStyle, Event, FONTS, FromTheme, ImageId,
+    ImageRejectionMessage, ImageSettings, KeyBinding, Language, Margins, Measure, Orientation,
+    Output, PageSize, Paper, PastedImage, SyntectHighlighter, ZoomSettings, ZoomShortcuts,
+    markdown_editor,
 };
 use std::fmt;
 use std::path::{Path, PathBuf};

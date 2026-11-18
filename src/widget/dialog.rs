@@ -5,30 +5,18 @@
 
 use super::toolbar::{button_style, fill};
 use super::{Action, EditorState, Inner};
+use crate::convert;
 use crate::fonts;
 use crate::i18n;
 use iced::keyboard::{self, Key, key::Named};
 use iced::mouse;
 use iced::widget::canvas::{self, Canvas, Geometry};
-use iced::widget::{Id, button, column, container, opaque, row, text, text_input};
+use iced::widget::{button, column, container, opaque, row, text, text_input};
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Rectangle, Renderer, Shadow, Theme,
     Vector,
 };
-
-/// State of the open link dialog.
-#[derive(Debug, Clone)]
-pub(crate) struct LinkDialog {
-    /// Text to display; `None` when the selection cannot be retyped
-    /// (several paragraphs, images, raw HTML).
-    pub text: Option<String>,
-    /// The selected text when the dialog opened.
-    pub original: String,
-    /// The selection already is a link.
-    pub editing: bool,
-    pub text_id: Id,
-    pub url_id: Id,
-}
+use markdown_editor_core::editor::LinkDialog;
 
 /// Width of the dialog box.
 const WIDTH: f32 = 440.0;
@@ -44,7 +32,7 @@ pub(crate) fn view<'a>(
     dialog: &LinkDialog,
     url: &str,
 ) -> [Element<'a, Action>; 2] {
-    let palette = state.style.palette;
+    let palette = convert::palette(&state.style.palette);
     let tr = |id| i18n::text(state.language, id);
 
     let title = if dialog.editing {
@@ -65,7 +53,7 @@ pub(crate) fn view<'a>(
         body = body.push(field(
             tr("link-text"),
             text_input("", display)
-                .id(dialog.text_id.clone())
+                .id(state.link_text_id.clone())
                 .on_input(|text| Action(Inner::LinkText(text)))
                 .on_submit(Action(Inner::LinkApply)),
         ));
@@ -73,7 +61,7 @@ pub(crate) fn view<'a>(
     body = body.push(field(
         tr("link-address"),
         text_input("https://", url)
-            .id(dialog.url_id.clone())
+            .id(state.link_url_id.clone())
             .on_input(|url| Action(Inner::LinkUrl(url)))
             .on_submit(Action(Inner::LinkApply)),
     ));
