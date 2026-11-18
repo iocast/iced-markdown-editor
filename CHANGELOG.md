@@ -5,6 +5,11 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-18
+
+### Fixed
+- Dragging a selection to the edge of the view now scrolls along
+
 ## [0.4.0] - 2026-11-18
 
 ### Changed
@@ -63,7 +68,8 @@ Format: Keep a Changelog (https://keepachangelog.com), versioning: Semantic Vers
 - Examples: `editor`, `minimal`, `images_folder`, `images_embed`, `images_upload`, `images_insert`
 - Minimum Rust version 1.88
 
-[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.4.0...HEAD
+[unreleased]: https://github.com/iocast/iced-markdown-editor/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/iocast/iced-markdown-editor/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.3...v0.4.0
 [0.3.3]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/iocast/iced-markdown-editor/compare/v0.3.1...v0.3.2
