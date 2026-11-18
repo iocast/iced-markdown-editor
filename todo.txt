@@ -6,3 +6,4 @@
 (B) Clipboard images and file drops in the browser +web
 (C) Text flowing around images; animated GIFs +images
 (C) Print / PDF export using the paper setup +export
+(A) 2026-11-17 add callback hooks for adding new content e.g. `CTRL+:` for adding the current date in format `YYYY-MM-DD`
