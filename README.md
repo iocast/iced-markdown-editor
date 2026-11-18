@@ -79,6 +79,45 @@ cargo run --example images_insert --features images
 cd examples/web && trunk serve --open                  # in the browser
 ```
 
+### Run against a local markdown-editor-core
+
+To try unreleased changes, clone
+[markdown-editor-core](https://github.com/iocast/markdown-editor-core) next to
+this repository, so that it is at `../markdown-editor-core`.
+
+Once, add these aliases to `.cargo/config.toml`. The file is not in Git:
+
+```toml
+[alias]
+dev = "run --config .cargo/local-core.toml"
+dev-test = "test --config .cargo/local-core.toml"
+```
+
+Then copy the lockfile, so the local build uses the same dependency versions.
+Repeat this after `cargo clean`:
+
+```powershell
+New-Item -ItemType Directory -Force target/local-core | Out-Null   # PowerShell
+Copy-Item Cargo.lock target/local-core/Cargo.lock
+```
+
+```bash
+mkdir -p target/local-core && cp Cargo.lock target/local-core/   # Git Bash
+```
+
+Use `cargo dev` instead of `cargo run`, from the root of this repository:
+
+```bash
+cargo dev --example editor --features syntect,images
+cargo dev --example minimal
+cargo dev-test --all-features
+```
+
+Plain `cargo` commands, CI and releases keep using the version from crates.io,
+and `Cargo.lock` does not change. The local version must match the requirement
+in `Cargo.toml`: otherwise Cargo warns that the patch was not used and builds
+with the crates.io version. The aliases do not cover `examples/web`.
+
 ## Documentation
 
 See [`docs/`](docs/README.md) and [docs.rs](https://docs.rs/iced-markdown-editor). To preview them locally, see [CONTRIBUTING.md](CONTRIBUTING.md).

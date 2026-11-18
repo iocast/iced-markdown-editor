@@ -1,0 +1,6 @@
+# Local override, loaded only by the `cargo dev` and `cargo dev-test` aliases.
+[patch.crates-io]
+markdown-editor-core = { path = "../markdown-editor-core" }
+
+[resolver]
+lockfile-path = "target/local-core/Cargo.lock"

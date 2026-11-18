@@ -2114,9 +2114,9 @@ dependencies = [
 
 [[package]]
 name = "markdown-editor-core"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56f1bf79666e6a320a1de8d1c1f9d3a2e9dd8cf9ffea2fbcc4323717254c7550"
+checksum = "2da07da35b77aab6dd95b62a514bb0226f1f778b489672cb484cbe66ab3f1f5c"
 dependencies = [
  "ab_glyph",
  "arboard",
