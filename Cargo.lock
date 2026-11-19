@@ -1528,7 +1528,7 @@ dependencies = [
 
 [[package]]
 name = "iced-markdown-editor"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "bytes",
  "fluent-bundle",
@@ -2114,9 +2114,9 @@ dependencies = [
 
 [[package]]
 name = "markdown-editor-core"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2da07da35b77aab6dd95b62a514bb0226f1f778b489672cb484cbe66ab3f1f5c"
+checksum = "0fd842a4bb36a94e45988c7f55621767231bce938a8494a06d1ac8d9f80117a0"
 dependencies = [
  "ab_glyph",
  "arboard",
