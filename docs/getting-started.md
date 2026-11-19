@@ -18,3 +18,39 @@ iced-markdown-editor = "0.3"
 
 `markdown()` builds the whole text: call it on `Event::Changed` or when
 saving, not in `view`. See `examples/minimal.rs`.
+
+## Showing Markdown
+
+To show a document rather than edit it, make it read-only and as tall as its content:
+
+```rust
+let viewer = EditorState::with_markdown(text)
+    .paper(Paper::fill())
+    .read_only(true);
+
+// In `view`, inside a `scrollable`:
+markdown_editor(&self.viewer)
+    .status_bar(false)
+    .height(Length::Shrink)
+    .view()
+    .map(Message::Viewer)
+
+// In `update`:
+Message::Viewer(action) => {
+    let output = self.viewer.update(action);
+    for event in output.events {
+        if let Event::LinkClicked(url) = event {
+            // open `url`
+        }
+    }
+    output.task.map(Message::Viewer)
+}
+```
+
+A read-only editor has no toolbar or caret. Text can be selected and copied, a click
+follows a link, the checkboxes of task lists do not react, and the context menu only
+offers copying; keys it does not use (typing, Tab, editing shortcuts) go to the
+application. With `height(Length::Shrink)` the editor is as tall as the document and
+the bars, and the wheel goes to the scrolling parent while the document fits.
+`set_read_only(false)` makes it editable again; `set_markdown` still replaces the
+document.

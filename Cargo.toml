@@ -22,7 +22,7 @@ images = ["markdown-editor-core/images", "iced/image", "dep:bytes"]
 
 [dependencies]
 # Document, Markdown, layout and editing: everything but the interface.
-markdown-editor-core = "^0.1.1"
+markdown-editor-core = "^0.1.2"
 iced = { version = "^0.14", features = ["canvas"] }
 # Instant / SystemTime that also work in the browser.
 web-time = "^1.1"

@@ -116,7 +116,34 @@ fn entries(state: &EditorState) -> Vec<Entry> {
             });
         }
     }
+    if state.read_only {
+        entries = without_edits(entries, state);
+    }
     entries
+}
+
+/// The entries of a read-only document: copying and selecting, without
+/// separators left at the ends or next to each other.
+fn without_edits(entries: Vec<Entry>, state: &EditorState) -> Vec<Entry> {
+    let mut kept: Vec<Entry> = Vec::new();
+    for entry in entries {
+        match &entry {
+            Entry::Item { command, .. } if state.allows(command) => kept.push(entry),
+            Entry::Item { .. } => {}
+            Entry::Separator => {
+                if kept
+                    .last()
+                    .is_some_and(|last| matches!(last, Entry::Item { .. }))
+                {
+                    kept.push(entry);
+                }
+            }
+        }
+    }
+    if matches!(kept.last(), Some(Entry::Separator)) {
+        kept.pop();
+    }
+    kept
 }
 
 /// Top-left corner of a menu of `size` opened at `at`, kept inside `area`.
@@ -298,6 +325,30 @@ mod tests {
             assert!(commands.contains(&command), "{command:?}");
         }
         assert!(!commands.contains(&Command::DeleteRow));
+    }
+
+    #[test]
+    fn a_read_only_document_only_offers_copying() {
+        let mut state = EditorState::with_markdown(
+            "hello world
+",
+        )
+        .read_only(true);
+        state.execute(Command::SelectAll);
+        assert_eq!(commands(&state), [Command::Copy, Command::SelectAll]);
+        assert!(
+            !matches!(entries(&state).last(), Some(Entry::Separator)),
+            "no separator is left at the end"
+        );
+
+        // In a table: nothing to change.
+        let state = EditorState::with_markdown(
+            "| a | b |
+| - | - |
+",
+        )
+        .read_only(true);
+        assert_eq!(commands(&state), [Command::SelectAll]);
     }
 
     #[test]

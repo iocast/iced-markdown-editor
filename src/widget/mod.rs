@@ -174,6 +174,10 @@ impl EditorState {
         image_loader(loader: impl Fn(&str) -> Option<Vec<u8>> + Send + Sync + 'static);
         /// Builder: sets the mode.
         mode(mode: Mode);
+        /// Builder: makes the document read-only, e.g. to show Markdown
+        /// rather than edit it ([`EditorCore::set_read_only`]). The widget
+        /// leaves out the toolbar and shows no caret.
+        read_only(read_only: bool);
     }
 
     setters! {
@@ -211,6 +215,9 @@ impl EditorState {
         /// Switches between WYSIWYG and source mode. The undo history starts
         /// again after a switch.
         set_mode(mode: Mode);
+        /// Makes the document read-only or editable again
+        /// ([`EditorCore::set_read_only`]).
+        set_read_only(read_only: bool);
     }
 
     /// Builder: sets the language of the toolbar, link bar and status bar.
@@ -252,12 +259,13 @@ impl EditorState {
     /// Caret blinking and dropped image files:
     /// `state.subscription().map(Message::Editor)`.
     pub fn subscription(&self) -> Subscription<Action> {
-        let blink = if self.focused {
+        let blink = if self.focused && !self.read_only {
             iced::time::every(BLINK).map(|_| Action(Inner::Blink))
         } else {
             Subscription::none()
         };
-        let drops = if self.image_settings.enabled() && self.image_settings.drop {
+        let drops = if self.image_settings.enabled() && self.image_settings.drop && !self.read_only
+        {
             iced::event::listen_with(file_dropped)
         } else {
             Subscription::none()

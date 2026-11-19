@@ -16,7 +16,7 @@ use iced::widget::canvas::{self, Canvas, Frame, Geometry};
 use iced::widget::{Stack, Text, button, column, container, row, text, text_input};
 use iced::{
     Alignment, Background, Border, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme,
-    Vector,
+    Vector, window,
 };
 use markdown_editor_core::draw::Frame as CoreFrame;
 use markdown_editor_core::editor::builtin_command;
@@ -104,6 +104,8 @@ struct Page<'a> {
     state: &'a EditorState,
     /// Right press opens the context menu.
     context_menu: bool,
+    /// As tall as the content (`height(Length::Shrink)`).
+    fit: bool,
 }
 
 fn publish(action: Inner) -> Option<canvas::Action<Action>> {
@@ -125,6 +127,16 @@ impl<'a> canvas::Program<Action> for Page<'a> {
         let (sx, sy) = editor.clamped_scroll();
 
         match event {
+            // As tall as the content: the height is set in `view`, from the
+            // layout for the last width. A new width changes the height;
+            // an empty scroll is the message that makes the application
+            // build the view again.
+            canvas::Event::Window(window::Event::RedrawRequested(_)) if self.fit => {
+                editor.sync_viewport(convert::size_from_iced(size));
+                let content = editor.layout.borrow().content_height;
+                ((content - size.height).abs() > 0.5)
+                    .then(|| canvas::Action::publish(Action(Inner::ScrollBy { dx: 0.0, dy: 0.0 })))
+            }
             canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)) => {
                 let Some(point) = cursor.position_in(bounds) else {
                     return editor
@@ -270,6 +282,13 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                 if page.modifiers.shift() && dx == 0.0 {
                     std::mem::swap(&mut dx, &mut dy);
                 }
+                // Content that fits leaves the wheel to a scrolling parent.
+                let (vertical, horizontal) = bars(editor, size);
+                let dx = if horizontal.is_some() { dx } else { 0.0 };
+                let dy = if vertical.is_some() { dy } else { 0.0 };
+                if dx == 0.0 && dy == 0.0 {
+                    return None;
+                }
                 publish(Inner::ScrollBy { dx, dy })
             }
             canvas::Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
@@ -307,13 +326,15 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                 if modifiers.command() && !modifiers.alt() {
                     if let Key::Character(c) = key.as_ref() {
                         let c = c.to_lowercase();
-                        // Shortcuts of disabled features go to the application.
+                        // Shortcuts of disabled features (or edits of a
+                        // read-only document) go to the application.
                         builtin_command(&c, modifiers.shift())
-                            .filter(|command| editor.features.allows(command))?;
+                            .filter(|command| editor.allows(command))?;
                     }
                 }
 
-                let tab = editor.tab_width > 0 && !modifiers.command();
+                let writable = !editor.read_only;
+                let tab = editor.tab_width > 0 && !modifiers.command() && writable;
                 let editing_key = match key.as_ref() {
                     Key::Named(Named::Tab) => tab,
                     Key::Named(
@@ -325,17 +346,17 @@ impl<'a> canvas::Program<Action> for Page<'a> {
                         | Named::End
                         | Named::PageUp
                         | Named::PageDown
-                        | Named::Backspace
-                        | Named::Delete
-                        | Named::Enter
                         | Named::Escape,
                     ) => true,
-                    Key::Character(_) => true,
+                    Key::Named(Named::Backspace | Named::Delete | Named::Enter) => writable,
+                    // Ctrl/Cmd shortcuts were checked above.
+                    Key::Character(_) => writable || modifiers.command(),
                     _ => false,
                 };
-                let types_text = text
-                    .as_ref()
-                    .is_some_and(|text| !text.is_empty() && text.chars().all(|c| !c.is_control()));
+                let types_text = writable
+                    && text.as_ref().is_some_and(|text| {
+                        !text.is_empty() && text.chars().all(|c| !c.is_control())
+                    });
                 if !editing_key && !types_text {
                     return None;
                 }
@@ -392,7 +413,7 @@ impl<'a> canvas::Program<Action> for Page<'a> {
             let layout = editor.layout.borrow();
             let mut marks = new_frame();
             render::draw_selection(&mut marks, &layout, editor.sel, &core_palette);
-            if editor.focused && editor.caret_on && editor.link_url.is_none() {
+            if editor.focused && editor.caret_on && editor.link_url.is_none() && !editor.read_only {
                 render::draw_caret(&mut marks, &layout, editor.sel, &core_palette);
             }
             draw::replay(marks.ops(), &mut overlay, Some(visible), scroll);
@@ -446,12 +467,14 @@ impl<'a> canvas::Program<Action> for Page<'a> {
             return mouse::Interaction::Idle;
         }
         let (sx, sy) = self.state.clamped_scroll();
-        if self
-            .state
-            .layout
-            .borrow()
-            .task_at(point.x + sx, point.y + sy)
-            .is_some()
+        // The checkboxes of a read-only document do not react.
+        if !self.state.read_only
+            && self
+                .state
+                .layout
+                .borrow()
+                .task_at(point.x + sx, point.y + sy)
+                .is_some()
         {
             mouse::Interaction::Pointer
         } else {
@@ -513,6 +536,10 @@ impl<'a> MarkdownEditor<'a> {
         self
     }
 
+    /// `Length::Shrink` makes the editor as tall as the document and the
+    /// bars, for a scrolling parent: the page itself then never scrolls
+    /// vertically (e.g. to show Markdown in a page, see
+    /// [`EditorState::read_only`]).
     pub fn height(mut self, height: impl Into<Length>) -> Self {
         self.height = height.into();
         self
@@ -538,7 +565,8 @@ impl<'a> MarkdownEditor<'a> {
         let tr = |id| i18n::text(language, id);
         let mut content = column![];
 
-        if self.toolbar {
+        // Nothing on the toolbar works in a read-only document.
+        if self.toolbar && !state.read_only {
             content = content.push(
                 container(toolbar::view(state))
                     .padding([4, 8])
@@ -585,17 +613,24 @@ impl<'a> MarkdownEditor<'a> {
             content = content.push(link_bar);
         }
 
+        // `Shrink`: as tall as the document (and the bars), for a scrolling
+        // parent; the page then never scrolls vertically.
+        let fit = self.height == Length::Shrink;
+        let (page_height, height) = if fit {
+            let content = state.layout.borrow().content_height;
+            (Length::Fixed(content), Length::Shrink)
+        } else {
+            (Length::Fill, Length::Fill)
+        };
         let page = Canvas::new(Page {
             state,
             context_menu: self.context_menu,
+            fit,
         })
         .width(Length::Fill)
-        .height(Length::Fill);
+        .height(page_height);
         // Always a stack, so the canvas keeps its state when the menu opens.
-        let mut layers = Stack::new()
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .push(page);
+        let mut layers = Stack::new().width(Length::Fill).height(height).push(page);
         if let Some(at) = state.context_menu.filter(|_| self.context_menu) {
             layers = layers.push(menu::view(state, convert::point(at)));
         }
@@ -703,8 +738,8 @@ impl<'a> MarkdownEditor<'a> {
         // Always a stack, so the editor keeps its state when the dialog opens.
         let mut editor = Stack::new()
             .width(Length::Fill)
-            .height(Length::Fill)
-            .push(content.width(Length::Fill).height(Length::Fill));
+            .height(height)
+            .push(content.width(Length::Fill).height(height));
         if let (Some(link), Some(url)) = (&state.link_dialog, &state.link_url) {
             for layer in dialog::view(state, link, url) {
                 editor = editor.push(layer);
@@ -721,5 +756,230 @@ impl<'a> MarkdownEditor<'a> {
 impl<'a> From<MarkdownEditor<'a>> for Element<'a, Action> {
     fn from(editor: MarkdownEditor<'a>) -> Self {
         editor.view()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::page::Paper;
+    use crate::widget::Event;
+    use iced::event::Status;
+    use iced::keyboard::Location;
+    use iced::keyboard::key::{NativeCode, Physical};
+    use markdown_editor_core::doc::Pos;
+
+    const BOUNDS: Rectangle = Rectangle {
+        x: 0.0,
+        y: 0.0,
+        width: 600.0,
+        height: 400.0,
+    };
+
+    /// A page canvas with its own interaction state, as Iced keeps it.
+    struct Harness {
+        editor: EditorState,
+        page: PageState,
+        bounds: Rectangle,
+        fit: bool,
+        events: Vec<Event>,
+    }
+
+    impl Harness {
+        fn new(markdown: &str, read_only: bool) -> Harness {
+            let editor = EditorState::with_markdown(markdown)
+                .paper(Paper::fill())
+                .read_only(read_only);
+            editor.sync_viewport(convert::size_from_iced(BOUNDS.size()));
+            Harness {
+                editor,
+                page: PageState::default(),
+                bounds: BOUNDS,
+                fit: false,
+                events: Vec::new(),
+            }
+        }
+
+        /// Feeds `event` to the canvas and the published action to the
+        /// editor, like an application. Returns whether the canvas took the
+        /// event (captured it).
+        fn send(&mut self, event: canvas::Event, at: Point) -> bool {
+            let program = Page {
+                state: &self.editor,
+                context_menu: true,
+                fit: self.fit,
+            };
+            let action = canvas::Program::update(
+                &program,
+                &mut self.page,
+                &event,
+                self.bounds,
+                mouse::Cursor::Available(at),
+            );
+            let Some(action) = action else {
+                return false;
+            };
+            let (message, _, status) = action.into_inner();
+            if let Some(message) = message {
+                let output = self.editor.update(message);
+                self.events.extend(output.events);
+            }
+            status == Status::Captured
+        }
+
+        /// Inside the character at `offset` of block `block`.
+        fn at(&self, block: usize, offset: usize) -> Point {
+            let (x, y, height) = self
+                .editor
+                .layout
+                .borrow()
+                .caret(Pos::new(block, offset))
+                .expect("a caret position");
+            Point::new(x + 1.0, y + height / 2.0)
+        }
+
+        fn click(&mut self, at: Point) {
+            self.send(
+                canvas::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+                at,
+            );
+            self.send(
+                canvas::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+                at,
+            );
+        }
+
+        /// A key press; returns whether the editor took it.
+        fn key(&mut self, key: Key, modifiers: Modifiers, text: Option<&str>) -> bool {
+            let event = canvas::Event::Keyboard(keyboard::Event::KeyPressed {
+                key: key.clone(),
+                modified_key: key,
+                physical_key: Physical::Unidentified(NativeCode::Unidentified),
+                location: Location::Standard,
+                modifiers,
+                text: text.map(Into::into),
+                repeat: false,
+            });
+            self.send(event, Point::new(10.0, 10.0))
+        }
+
+        fn typed(&mut self, c: &str) -> bool {
+            self.key(Key::Character(c.into()), Modifiers::empty(), Some(c))
+        }
+
+        fn shortcut(&mut self, c: &str) -> bool {
+            self.key(Key::Character(c.into()), Modifiers::COMMAND, None)
+        }
+
+        fn named(&mut self, key: Named) -> bool {
+            self.key(Key::Named(key), Modifiers::empty(), None)
+        }
+
+        fn wheel(&mut self, lines: f32) -> bool {
+            let delta = ScrollDelta::Lines { x: 0.0, y: lines };
+            self.send(
+                canvas::Event::Mouse(mouse::Event::WheelScrolled { delta }),
+                Point::new(10.0, 10.0),
+            )
+        }
+    }
+
+    #[test]
+    fn typing_edits_an_editable_document() {
+        let mut h = Harness::new("hello\n", false);
+        let at = h.at(0, 5);
+        h.click(at);
+        assert!(h.typed("s"));
+        assert_eq!(h.editor.markdown(), "hellos\n");
+    }
+
+    #[test]
+    fn a_read_only_document_leaves_keys_to_the_application() {
+        let text = "hello world\n";
+        let mut h = Harness::new(text, true);
+        let at = h.at(0, 2);
+        h.click(at);
+        assert!(h.editor.is_focused(), "it can still be focused");
+
+        assert!(!h.typed("x"));
+        assert!(!h.named(Named::Backspace));
+        assert!(!h.named(Named::Delete));
+        assert!(!h.named(Named::Enter));
+        assert!(!h.named(Named::Tab));
+        assert!(!h.shortcut("b"));
+        assert!(!h.shortcut("x"));
+        assert!(!h.shortcut("v"));
+        assert!(!h.shortcut("z"));
+        assert_eq!(h.editor.markdown(), text);
+        assert!(!h.events.contains(&Event::Changed));
+
+        // Moving, selecting and copying still work.
+        assert!(h.named(Named::ArrowRight));
+        assert!(h.shortcut("a"));
+        assert_eq!(h.editor.selected_text().as_deref(), Some("hello world"));
+        assert!(h.shortcut("c"));
+    }
+
+    #[test]
+    fn a_read_only_document_follows_links_with_a_click() {
+        let mut h = Harness::new("[the site](https://example.org)\n", true);
+        let at = h.at(0, 3);
+        h.click(at);
+        assert!(
+            h.events
+                .contains(&Event::LinkClicked("https://example.org".into()))
+        );
+    }
+
+    #[test]
+    fn the_wheel_goes_to_the_parent_when_nothing_scrolls() {
+        let mut h = Harness::new("one line\n", false);
+        assert!(!h.wheel(-3.0));
+
+        let long: String = (0..200).map(|i| format!("line {i}\n\n")).collect();
+        let mut h = Harness::new(&long, false);
+        assert!(h.wheel(-3.0));
+        assert!((h.editor.scroll_y - 3.0 * LINE).abs() < 0.5);
+    }
+
+    #[test]
+    fn a_fitted_page_asks_for_its_content_height() {
+        let mut h = Harness::new("one line\n", true);
+        h.fit = true;
+        let redraw =
+            || canvas::Event::Window(window::Event::RedrawRequested(iced::time::Instant::now()));
+        // Laid out at the old height: a message, so the view is built again.
+        h.send(redraw(), Point::ORIGIN);
+        assert_eq!(h.editor.scroll_y, 0.0, "the message changes nothing");
+        let content = h.editor.layout.borrow().content_height;
+        assert!(content > 0.0 && content < 100.0, "{content}");
+        fn asks(h: &Harness) -> bool {
+            let program = Page {
+                state: &h.editor,
+                context_menu: true,
+                fit: true,
+            };
+            let redraw =
+                canvas::Event::Window(window::Event::RedrawRequested(iced::time::Instant::now()));
+            canvas::Program::update(
+                &program,
+                &mut PageState::default(),
+                &redraw,
+                h.bounds,
+                mouse::Cursor::Unavailable,
+            )
+            .is_some()
+        }
+        assert!(asks(&h));
+
+        // At the content height: nothing to do.
+        h.bounds.height = content;
+        assert!(!asks(&h));
+
+        // A narrower page wraps into more lines: taller again.
+        h.editor.set_markdown(&"word ".repeat(200));
+        h.bounds.width = 200.0;
+        assert!(asks(&h));
+        assert!(h.editor.layout.borrow().content_height > content * 3.0);
     }
 }

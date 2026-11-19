@@ -8,6 +8,7 @@ with the GFM extensions strikethrough, task lists and tables. Desktop and web.
 - Nested lists, task lists with clickable checkboxes, block quotes, code blocks
 - Tables with column alignment; Tab and Enter move between cells
 - WYSIWYG and Markdown source mode on the same pages
+- Read-only mode and a height that fits the content, to show Markdown in a page
 - Zoom, undo / redo, clipboard
 - Toolbar and status bar in English, German, French, Spanish and Italian (Fluent)
 - Optional syntax highlighting (`syntect`) and images (`images`)
